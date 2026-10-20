@@ -1,0 +1,12 @@
+.settings-form { display: grid; gap: var(--space-gap); max-width: 1100px; }
+.settings-fields { border: 0; padding: 0; margin: 0; min-width: 0; display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-gap); }
+.settings-panel { padding: 26px; }
+.settings-panel .panel-title { margin-bottom: 12px; }
+.settings-panel .panel-title svg { color: var(--primary); }
+.settings-help { color: var(--muted-foreground); font-size: 12px; line-height: 1.8; margin-bottom: 24px; }
+.settings-panel .input { min-height: 44px; }
+.settings-change { grid-column: 1 / -1; }
+.settings-save { display: flex; justify-content: flex-end; }
+.settings-notice { margin-bottom: var(--space-gap); }
+@media (max-width: 800px) { .settings-fields { grid-template-columns: 1fr; } }

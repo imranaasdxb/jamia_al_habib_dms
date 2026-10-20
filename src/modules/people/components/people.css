@@ -1,0 +1,18 @@
+.people-tabs { display: flex; gap: 10px; margin-bottom: 22px; }
+.people-form-fields { display: grid; gap: 21px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.people-full-width { grid-column: 1 / -1; }
+.people-checkbox { display: flex; align-items: center; gap: 8px; margin-top: 9px; font-size: 11px; color: var(--muted-foreground); }
+.people-checkbox input { accent-color: var(--primary); }
+.people-proof-file { font-size: 11px; color: var(--muted-foreground); margin-top: 10px; }
+.people-area-filter { max-width: 190px; }
+.people-book-placeholder { width: 100%; padding: 20px; background: var(--muted); border-radius: var(--radius); display: grid; gap: 12px; }
+.people-book-placeholder .muted { font-size: 12px; line-height: 1.8; }
+.people-book-placeholder .button { justify-self: start; }
+.people-request-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.people-request-heading p { font-size: 12px; }
+.people-request-table { overflow: hidden; }
+.people-review { display: grid; gap: 20px; padding-top: 20px; }
+.people-comparison td { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 160px; max-width: 250px; }
+.people-photo-comparison { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+.people-photo-comparison img { width: 100px; height: 100px; object-fit: cover; border-radius: var(--radius); margin-top: 10px; }
+@media (max-width: 1200px) { .people-filters { align-items: flex-start; } .people-filters .users-filter-controls { flex-wrap: wrap; } }
