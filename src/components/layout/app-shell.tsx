@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   Bell, BookOpen, ChevronDown, ClipboardCheck, Flag, HandCoins,
   House, Search, Settings, Users, UserRound, ChartNoAxesCombined,
@@ -56,10 +56,36 @@ export function AppShell({ children, search, onSearchChange, account,
   const booksSubmenuId = useId();
   const [activeDialog, setActiveDialog] = useState<MessageKey | null>(null);
   const isAccountDialog = activeDialog === "account";
+  const accountCardId = useId();
+  const accountCardRef = useRef<HTMLDivElement>(null);
+  const profileButtonRef = useRef<HTMLButtonElement>(null);
   const initials = account.fullName.split(" ").filter(Boolean).slice(0, 2)
     .map((part) => part.charAt(0)).join("").toUpperCase();
 
   useEffect(() => { setLanguage(account.language); }, [account.language, setLanguage]);
+
+  useEffect(() => {
+    if (!isAccountDialog) return;
+    const closeOutside = (event: PointerEvent | FocusEvent) => {
+      if (event.target instanceof Node && !accountCardRef.current?.contains(event.target)) {
+        setActiveDialog(null);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setActiveDialog(null);
+        profileButtonRef.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("focusin", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("focusin", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isAccountDialog]);
 
   return (
     <div className={"app-shell min-w-[1366px] min-h-[100vh]"}>
@@ -132,32 +158,46 @@ export function AppShell({ children, search, onSearchChange, account,
           >
             <Bell size={23} aria-hidden="true" /><span className={"notification-dot absolute top-[8px] end-[9px] w-[7px] h-[7px] bg-[var(--primary)] [border:2px_solid_var(--card)] rounded-[50%]"} />
           </Button>
-          <button type="button" className={"profile-button flex items-center gap-[11px] [border:0] bg-[transparent] p-0 text-start"} aria-label={t("profile")}
-            onClick={() => setActiveDialog("account")}>
+          <div className="relative" ref={accountCardRef}>
+          <button ref={profileButtonRef} type="button" className={"profile-button flex items-center gap-[11px] [border:0] bg-[transparent] p-0 text-start"} aria-label={t("profile")}
+            aria-expanded={isAccountDialog} aria-controls={accountCardId} aria-haspopup="dialog"
+            onClick={() => setActiveDialog(isAccountDialog ? null : "account")}>
             <span className={"avatar inline-flex items-center justify-center shrink-0 w-[39px] h-[39px] rounded-[50%] bg-[var(--accent)] text-[color:var(--accent-foreground)] text-[length:12px] font-semibold profile-avatar relative overflow-hidden [&_img]:absolute [&_img]:inset-0 [&_img]:w-full [&_img]:h-full [&_img]:object-cover"}>{initials}{account.hasPhoto && <img alt=""
               src={`/api/v1/users/${account.id}/photo`} onError={(event) => { event.currentTarget.hidden = true; }} />}</span>
             <span><span className={"profile-name block text-[length:13px] font-semibold"}>{account.fullName}</span>
               <span className={"profile-role block text-[length:11px] text-[color:var(--muted-foreground)] mt-[4px]"}>{t(account.role === "ADMIN" ? "superAdmin" : "staff")}</span></span>
             <ChevronDown size={16} aria-hidden="true" />
           </button>
+          {isAccountDialog && (
+            <div id={accountCardId} role="dialog" aria-label={t("account")}
+              className="absolute end-0 top-full z-40 mt-3 flex w-[320px] max-w-[calc(100vw-2rem)] flex-col gap-4 rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-popover)]">
+              <div className="flex items-center gap-3 rounded-xl bg-muted p-3.5">
+                <span className="relative flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent text-sm font-semibold text-accent-foreground">
+                  {initials}
+                  {account.hasPhoto && <img alt="" className="absolute inset-0 size-full object-cover"
+                    src={`/api/v1/users/${account.id}/photo`} onError={(event) => { event.currentTarget.hidden = true; }} />}
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">{account.fullName}</p>
+                  <p className="mt-1 truncate text-xs text-muted-foreground" dir="ltr">{account.email}</p>
+                  <p className="mt-1.5 text-xs text-primary">{t(account.role === "ADMIN" ? "superAdmin" : "staff")}</p>
+                </div>
+              </div>
+              <LogoutButton />
+            </div>
+          )}
+          </div>
         </div>
       </header>
 
       <main className={"workspace ms-[var(--sidebar-width)] p-[26px_var(--space-page)]"}>{children}</main>
 
       <Dialog
-        open={activeDialog !== null}
+        open={activeDialog !== null && !isAccountDialog}
         onOpenChange={(open) => { if (!open) setActiveDialog(null); }}
         title={activeDialog ? t(activeDialog) : ""}
-        description={t(isAccountDialog ? "accountDescription" : "moduleLater")}
-      >
-        {isAccountDialog && (
-          <div className={"dialog-actions flex gap-[10px] flex-wrap mt-[24px]"}>
-            <p className={"muted text-[color:var(--muted-foreground)]"} dir="ltr">{account.email}</p>
-            <LogoutButton />
-          </div>
-        )}
-      </Dialog>
+        description={t("moduleLater")}
+      />
     </div>
   );
 }

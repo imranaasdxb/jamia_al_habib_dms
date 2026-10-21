@@ -74,13 +74,12 @@ export async function bindIdentity(identity: AuthIdentity) {
 
 export async function consumeAuthRateLimit(action: string, email: string, ip: string): Promise<boolean> {
   return withRequestDatabase({}, async (transaction) => {
-    let allowed = true;
     const limits = [{ key: `ip:${action}:${ip}`, maximum: 60 }];
     if (email) limits.push({ key: `email:${action}:${email.toLowerCase()}`,
       maximum: action === "login" ? 10 : 5 });
-    for (const limit of limits) {
-      const [row] = await transaction.insert(authRateLimits)
-        .values({ keyHash: hashAuthValue(limit.key) })
+    const maximums = new Map(limits.map((limit) => [hashAuthValue(limit.key), limit.maximum]));
+    const rows = await transaction.insert(authRateLimits)
+        .values(Array.from(maximums.keys(), (keyHash) => ({ keyHash })))
         .onConflictDoUpdate({
           target: authRateLimits.keyHash,
           set: {
@@ -90,10 +89,9 @@ export async function consumeAuthRateLimit(action: string, email: string, ip: st
               then now() else ${authRateLimits.windowStartedAt} end`,
             updatedAt: new Date(),
           },
-        }).returning({ attempts: authRateLimits.attempts });
-      if (!row || row.attempts > limit.maximum) allowed = false;
-    }
-    return allowed;
+        }).returning({ keyHash: authRateLimits.keyHash, attempts: authRateLimits.attempts });
+    return rows.length === maximums.size
+      && rows.every((row) => row.attempts <= (maximums.get(row.keyHash) ?? 0));
   });
 }
 

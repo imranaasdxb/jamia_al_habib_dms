@@ -30,6 +30,7 @@ export function AuthForm({ screen, email = "" }: { screen: AuthScreen; email?: s
   const [message, setMessage] = useState<MessageKey | null>(null);
   const [isError, setIsError] = useState(false);
   const [isResending, setIsResending] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const isVerification = screen === "verifySignup" || screen === "verifyReset";
   const [resendWait, setResendWait] = useState(isVerification ? 60 : 0);
   const hasEmail = screen === "login" || screen === "signup" || screen === "forgot";
@@ -43,11 +44,12 @@ export function AuthForm({ screen, email = "" }: { screen: AuthScreen; email?: s
     confirm: t("errorConfirm"),
     otp: t("errorOtp"),
   });
-  const { register, handleSubmit, resetField, formState: { errors, isSubmitting } } = useForm<AuthFormValues>({
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<AuthFormValues>({
     resolver: zodResolver(schema),
     defaultValues: { fullName: "", email: "", password: "", confirmPassword: "", code: "" },
     mode: "onTouched",
   });
+  const isBusy = isSubmitting || isRedirecting;
 
   useEffect(() => {
     if (!isVerification) return;
@@ -56,6 +58,7 @@ export function AuthForm({ screen, email = "" }: { screen: AuthScreen; email?: s
   }, [isVerification]);
 
   async function submit(values: AuthFormValues) {
+    if (isRedirecting || isResending) return;
     setMessage(null);
     try {
       const result = await submitAuthForm(screen, values, email);
@@ -63,20 +66,18 @@ export function AuthForm({ screen, email = "" }: { screen: AuthScreen; email?: s
         setIsError(true);
         setMessage(authErrorMessage(result.error));
       } else if (result.redirectTo) {
+        setIsRedirecting(true);
         router.replace(result.redirectTo);
-        router.refresh();
       }
     } catch {
+      setIsRedirecting(false);
       setIsError(true);
       setMessage("authUnavailable");
-    } finally {
-      resetField("password");
-      resetField("confirmPassword");
     }
   }
 
   async function resendCode() {
-    if (resendWait > 0 || isResending) return;
+    if (resendWait > 0 || isResending || isBusy) return;
     setIsResending(true);
     setMessage(null);
     try {
@@ -97,24 +98,24 @@ export function AuthForm({ screen, email = "" }: { screen: AuthScreen; email?: s
     <form className={"auth-form flex flex-col gap-[19px] mt-[25px]"} noValidate onSubmit={handleSubmit(submit)}>
       {screen === "signup" && (
         <AuthField id="full-name" label={t("fullName")} placeholder={t("namePlaceholder")}
-          autoComplete="name" maxLength={100} required error={errors.fullName?.message}
+          autoComplete="name" maxLength={100} required readOnly={isBusy} error={errors.fullName?.message}
           {...register("fullName")} />
       )}
       {hasEmail && (
         <AuthField id="email" type="email" label={t("email")} placeholder={t("emailPlaceholder")}
-          autoComplete="email" inputMode="email" maxLength={254} dir="ltr" required
+          autoComplete="email" inputMode="email" maxLength={254} dir="ltr" required readOnly={isBusy}
           error={errors.email?.message} {...register("email")} />
       )}
       {hasPassword && (
         <AuthField id="password" isPassword label={t(screen === "reset" ? "newPassword" : "password")}
-          placeholder={t("passwordPlaceholder")} required maxLength={128}
+          placeholder={t("passwordPlaceholder")} required maxLength={128} readOnly={isBusy}
           autoComplete={screen === "login" ? "current-password" : "new-password"}
           hint={hasConfirmPassword ? t("passwordHint") : undefined}
           error={errors.password?.message} {...register("password")} />
       )}
       {hasConfirmPassword && (
         <AuthField id="confirm-password" isPassword label={t("confirmPassword")}
-          autoComplete="new-password" required maxLength={128}
+          autoComplete="new-password" required maxLength={128} readOnly={isBusy}
           error={errors.confirmPassword?.message} {...register("confirmPassword")} />
       )}
       {screen === "login" && (
@@ -124,15 +125,15 @@ export function AuthForm({ screen, email = "" }: { screen: AuthScreen; email?: s
       {isVerification && <>
         <p className={"field-hint block mt-[8px] text-[length:11px] text-[color:var(--muted-foreground)] leading-[1.7]"} dir="ltr">{email}</p>
         <AuthField id="verification-code" label={t("otp")} className={"otp-input tracking-[10px] text-[length:24px] text-center numeric tabular-nums"}
-          inputMode="numeric" autoComplete="one-time-code" maxLength={6} dir="ltr"
+          inputMode="numeric" autoComplete="one-time-code" maxLength={6} dir="ltr" readOnly={isBusy}
           hint={t("otpHint")} required error={errors.code?.message} {...register("code")} />
       </>}
-      <Button type="submit" className={"auth-submit w-full mt-[2px]"} disabled={isSubmitting || isResending}>
-        {t(isSubmitting ? "working" : submitLabels[screen])}
+      <Button type="submit" className={"auth-submit w-full mt-[2px]"} loading={isBusy} disabled={isResending}>
+        {t(isBusy ? "working" : submitLabels[screen])}
         <ArrowRight size={17} className={"directional-icon [html[dir='rtl']_&]:[transform:scaleX(-1)]"} aria-hidden="true" />
       </Button>
       {isVerification && (
-        <Button variant="ghost" disabled={resendWait > 0 || isResending || isSubmitting} onClick={resendCode}>
+        <Button variant="ghost" disabled={resendWait > 0 || isResending || isBusy} onClick={resendCode}>
           {resendWait > 0 ? `${t("authResendWait")} ${resendWait} ${t("seconds")}` : t("resendCode")}
         </Button>
       )}

@@ -31,9 +31,10 @@ export function LogoutButton() {
     }
   }
 
-  return <div>
-    <Button variant="outline" disabled={isPending} onClick={logout}>
-      <LogOut size={16} aria-hidden="true" />{t(isPending ? "working" : "logout")}
+  return <div className="w-full">
+    <Button variant="outline" loading={isPending} onClick={logout}
+      className="w-full rounded-xl border-border text-[var(--danger)] hover:border-[var(--danger)] hover:bg-[var(--danger-soft)]">
+      <LogOut size={16} strokeWidth={1.8} aria-hidden="true" />{t(isPending ? "working" : "logout")}
     </Button>
     {hasError && <p className={"field-error block mt-[7px] text-[length:11px] text-[color:var(--danger)]"} role="alert">{t("authActionFailed")}</p>}
   </div>;

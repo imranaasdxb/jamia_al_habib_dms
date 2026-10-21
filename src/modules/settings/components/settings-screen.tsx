@@ -33,11 +33,14 @@ function SettingsForm({ data, onSaved, onBusyChange }: { data: SettingsData;
   onSaved: (data: SettingsData) => void; onBusyChange: (busy: boolean) => void }) {
   const { t } = useLanguage();
   const [error, setError] = useState<MessageKey | null>(null);
-  const { register, handleSubmit, formState: { errors, isSubmitting, isDirty, isValid } } = useForm<SaveSettingsValues>({
+  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<SaveSettingsValues>({
     resolver: zodResolver(saveSettingsSchema), mode: "onChange",
     defaultValues: { sessionTimeoutMinutes: data.sessionTimeoutMinutes,
       defaultReturnMonths: data.defaultReturnMonths, version: data.updatedAt, reason: "" },
   });
+  const hasChanges = watch("sessionTimeoutMinutes") !== data.sessionTimeoutMinutes
+    || watch("defaultReturnMonths") !== data.defaultReturnMonths;
+  const needsReason = watch("reason").trim().length < 3;
   async function submit(values: SaveSettingsValues) {
     setError(null); onBusyChange(true);
     try { onSaved(await settingsRequest(values)); }
@@ -67,7 +70,9 @@ function SettingsForm({ data, onSaved, onBusyChange }: { data: SettingsData;
       </Card>
     </fieldset>
     {error && <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8] auth-error bg-[var(--danger-soft)] text-[color:var(--danger)]"} role="alert">{t(error)}</p>}
-    <div className={"settings-save flex justify-end"}><Button type="submit" loading={isSubmitting} disabled={!isDirty || !isValid}>
+    <div className="settings-save flex flex-wrap items-center justify-between gap-3"><p id="settings-save-help" className="text-xs text-muted-foreground" role="status">
+      {!hasChanges ? t("settingsNoChanges") : needsReason ? t("settingsReasonInvalid") : ""}</p>
+      <Button type="submit" loading={isSubmitting} disabled={!hasChanges} aria-describedby="settings-save-help">
       <Save size={17} aria-hidden="true" />{t(isSubmitting ? "usersSaving" : "settingsSave")}</Button></div>
   </form>;
 }
