@@ -44,6 +44,12 @@ class PageDataCache {
     return entry;
   }
 
+  updateQueries<T>(prefix: string, update: (previous: T) => T) {
+    for (const [key, entry] of this.queries) {
+      if (key.startsWith(prefix) && entry.state.data !== undefined) this.setQueryData(key, update(entry.state.data as T));
+    }
+  }
+
   invalidate(prefix: string) {
     for (const [key, entry] of this.queries) {
       if (!key.startsWith(prefix)) continue;

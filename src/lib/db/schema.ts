@@ -1,4 +1,4 @@
-import { boolean, date, index, integer, jsonb, pgTable, text, timestamp,
+import { bigint, boolean, date, index, integer, jsonb, pgTable, text, timestamp,
   uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -103,6 +103,136 @@ export const masterRecords = pgTable("master_records", {
   ...auditColumns(),
 }, (table) => [uniqueIndex("master_records_kind_code_idx").on(table.kind, table.code),
   index("master_records_kind_active_idx").on(table.kind, table.active), index("master_records_parent_idx").on(table.parentId)]);
+
+export const books = pgTable("books", {
+  id: uuid("id").primaryKey().defaultRandom(), bookNumber: text("book_number").notNull().unique(),
+  stockDate: date("stock_date").notNull(), editionId: uuid("edition_id").notNull().references(() => masterRecords.id, { onDelete: "restrict" }),
+  editionNameEn: text("edition_name_en").notNull(), editionNameUr: text("edition_name_ur").notNull(),
+  bookType: text("book_type", { enum: ["REGULAR", "TOKEN"] }).notNull(), tokenValuePaise: integer("token_value_paise"),
+  receiptFrom: integer("receipt_from").notNull(), receiptTo: integer("receipt_to").notNull(),
+  totalReceipts: integer("total_receipts").notNull().generatedAlwaysAs(sql`receipt_to - receipt_from + 1`),
+  faceValuePaise: bigint("face_value_paise", { mode: "number" }).generatedAlwaysAs(sql`case when book_type = 'TOKEN'
+    then (receipt_to::bigint - receipt_from::bigint + 1) * token_value_paise::bigint else null end`),
+  status: text("status", { enum: ["IN_STOCK", "ASSIGNED", "FLAGGED", "CLOSED", "PARTLY_USED", "LEFTOVER_ASSIGNED", "LOST"] }).notNull().default("IN_STOCK"),
+  remarks: text("remarks").notNull().default(""), entryByName: text("entry_by_name").notNull(),
+  operationId: uuid("operation_id").notNull(), operationHash: text("operation_hash").notNull(),
+  ...auditColumns(),
+}, (table) => [index("books_edition_type_idx").on(table.editionId, table.bookType),
+  index("books_operation_idx").on(table.operationId), index("books_stock_date_idx").on(table.stockDate)]);
+
+export const bookAssignments = pgTable("book_assignments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  source: text("source", { enum: ["NEW", "LEFTOVER"] }).notNull().default("NEW"),
+  leftoverIds: jsonb("leftover_ids").$type<string[]>().notNull().default([]),
+  number: text("number").notNull().unique().default(sql`'ASN-' || extract(year from current_date)::text || '-' || lpad(nextval('public.assignment_number_seq')::text, 6, '0')`),
+  assignmentDate: date("assignment_date").notNull(), expectedReturnDate: date("expected_return_date").notNull(),
+  collectorId: uuid("collector_id").notNull().references(() => people.id, { onDelete: "restrict" }),
+  collectorName: text("collector_name").notNull(), collectorCode: text("collector_code").notNull(),
+  phone: text("phone").notNull(), whatsapp: text("whatsapp").notNull(), address: text("address").notNull(),
+  areas: jsonb("areas").$type<{ id: string; nameEn: string; nameUr: string }[]>().notNull(),
+  bookIds: jsonb("book_ids").$type<string[]>().notNull(), remarks: text("remarks").notNull().default(""),
+  assignedByName: text("assigned_by_name").notNull(),
+  operationId: uuid("operation_id").notNull().unique(), operationHash: text("operation_hash").notNull(),
+  ...auditColumns(),
+}, (table) => [index("book_assignments_collector_idx").on(table.collectorId),
+  index("book_assignments_return_idx").on(table.expectedReturnDate)]);
+
+export const bookCases = pgTable("book_cases", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  assignmentId: uuid("assignment_id").notNull().references(() => bookAssignments.id, { onDelete: "restrict" }),
+  bookId: uuid("book_id").notNull().references(() => books.id, { onDelete: "restrict" }),
+  receiptFrom: integer("receipt_from").notNull(), receiptTo: integer("receipt_to").notNull(),
+  source: text("source", { enum: ["NEW", "LEFTOVER"] }).notNull().default("NEW"), sourceCode: text("source_code").notNull(),
+  leftoverId: uuid("leftover_id").unique().references((): AnyPgColumn => leftoverBooks.id, { onDelete: "restrict" }),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [uniqueIndex("book_cases_open_book_idx").on(table.bookId).where(sql`closed_at is null`),
+  uniqueIndex("book_cases_assignment_book_idx").on(table.assignmentId, table.bookId)]);
+
+export const bookReturns = pgTable("book_returns", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  number: text("number").notNull().unique().default(sql`'RET-' || extract(year from current_date)::text || '-' || lpad(nextval('public.return_number_seq')::text, 6, '0')`),
+  caseId: uuid("case_id").notNull().unique().references(() => bookCases.id, { onDelete: "restrict" }),
+  sourceCode: text("source_code").notNull().default(""),
+  submissionPending: boolean("submission_pending").notNull().default(false),
+  receiptEntryVersion: integer("receipt_entry_version").notNull().default(0), finalizedAt: timestamp("finalized_at", { withTimezone: true }),
+  bookId: uuid("book_id").notNull().references(() => books.id, { onDelete: "restrict" }),
+  assignmentId: uuid("assignment_id").notNull().references(() => bookAssignments.id, { onDelete: "restrict" }),
+  bookNumber: text("book_number").notNull(), collectorName: text("collector_name").notNull(), returnDate: date("return_date").notNull(),
+  outcome: text("outcome", { enum: ["CLOSED", "PARTLY_USED", "FLAGGED"] }).notNull(),
+  totalPaise: bigint("total_paise", { mode: "number" }).notNull(), cashPaise: bigint("cash_paise", { mode: "number" }).notNull(),
+  digitalPaise: bigint("digital_paise", { mode: "number" }).notNull(), receiptSumPaise: bigint("receipt_sum_paise", { mode: "number" }).notNull(),
+  receiptFrom: integer("receipt_from").notNull(), receiptTo: integer("receipt_to").notNull(), receiptsUsed: integer("receipts_used").notNull(),
+  lastUsed: integer("last_used"), remainingReceipts: integer("remaining_receipts").notNull().generatedAlwaysAs(sql`case when last_used is null then receipt_to - receipt_from + 1 else receipt_to - last_used end`),
+  commissionBasisPoints: integer("commission_basis_points").notNull(),
+  commissionPaise: bigint("commission_paise", { mode: "number" }).notNull().generatedAlwaysAs(sql`round(total_paise::numeric * commission_basis_points / 1000000) * 100`),
+  netPaise: bigint("net_paise", { mode: "number" }).notNull().generatedAlwaysAs(sql`total_paise - round(total_paise::numeric * commission_basis_points / 1000000) * 100`),
+  cashHandoverPaise: bigint("cash_handover_paise", { mode: "number" }).notNull().generatedAlwaysAs(sql`cash_paise - round(total_paise::numeric * commission_basis_points / 1000000) * 100`),
+  commissionGiven: boolean("commission_given").notNull().default(false),
+  exceptions: jsonb("exceptions").$type<{ receiptNumber: number; status: "CANCELLED" | "TORN" | "LOST"; reasonId: string; reasonEn: string; reasonUr: string }[]>().notNull().default([]),
+  flagReasonId: uuid("flag_reason_id").references(() => masterRecords.id, { onDelete: "restrict" }),
+  flagReasonEn: text("flag_reason_en").notNull().default(""), flagReasonUr: text("flag_reason_ur").notNull().default(""),
+  expectedPaise: bigint("expected_paise", { mode: "number" }), foundPaise: bigint("found_paise", { mode: "number" }),
+  remarks: text("remarks").notNull().default(""), checkedByName: text("checked_by_name").notNull(),
+  receiptEntryStatus: text("receipt_entry_status", { enum: ["PENDING", "DRAFT", "RECONCILED", "FLAGGED"] }).notNull().default("PENDING"),
+  operationId: uuid("operation_id").notNull().unique(), operationHash: text("operation_hash").notNull(), ...auditColumns(),
+}, (table) => [index("book_returns_book_idx").on(table.bookId), index("book_returns_queue_idx").on(table.receiptEntryStatus, table.createdAt)]);
+
+export const bookFlags = pgTable("book_flags", {
+  id: uuid("id").primaryKey().defaultRandom(), returnId: uuid("return_id").notNull().unique().references(() => bookReturns.id, { onDelete: "restrict" }),
+  bookId: uuid("book_id").notNull().references(() => books.id, { onDelete: "restrict" }),
+  collectorId: uuid("collector_id").notNull().references(() => people.id, { onDelete: "restrict" }),
+  reasonId: uuid("reason_id").notNull().references(() => masterRecords.id, { onDelete: "restrict" }),
+  reasonEn: text("reason_en").notNull(), reasonUr: text("reason_ur").notNull(),
+  expectedPaise: bigint("expected_paise", { mode: "number" }).notNull(), foundPaise: bigint("found_paise", { mode: "number" }).notNull(),
+  differencePaise: bigint("difference_paise", { mode: "number" }).notNull().generatedAlwaysAs(sql`expected_paise - found_paise`),
+  status: text("status", { enum: ["OPEN", "UNDER_REVIEW", "RESOLVED"] }).notNull().default("OPEN"),
+  remarks: text("remarks").notNull(), ...auditColumns(),
+  reconciliation: jsonb("reconciliation").$type<Record<string, unknown>>().notNull().default({}),
+});
+
+export const bookReceipts = pgTable("book_receipts", {
+  id: uuid("id").primaryKey().defaultRandom(), returnId: uuid("return_id").notNull().references(() => bookReturns.id, { onDelete: "restrict" }),
+  bookId: uuid("book_id").notNull().references(() => books.id, { onDelete: "restrict" }), number: integer("receipt_number").notNull().unique(),
+  checked: boolean("checked").notNull().default(false),
+  data: jsonb("data").$type<import("@/modules/receipts/receipts.schema").ReceiptValues>().notNull(),
+  labels: jsonb("labels").$type<Record<string, { nameEn: string; nameUr: string }>>().notNull().default({}),
+  status: text("status", { enum: ["VALID", "CANCELLED", "TORN", "LOST", "BLANK"] }).notNull(),
+  amountPaise: bigint("amount_paise", { mode: "number" }), phone: text("phone").notNull().default(""),
+  reference: text("reference"), photoKey: text("photo_key"), version: integer("version").notNull().default(1), entryByName: text("entry_by_name").notNull(), ...auditColumns(),
+}, (table) => [index("book_receipts_return_idx").on(table.returnId, table.number), index("book_receipts_phone_idx").on(table.phone)]);
+
+export const paymentReferences = pgTable("payment_references", {
+  reference: text("reference").primaryKey(), sourceType: text("source_type", { enum: ["RECEIPT", "DONATION"] }).notNull(),
+  sourceId: uuid("source_id").notNull(), createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [uniqueIndex("payment_references_source_idx").on(table.sourceType, table.sourceId)]);
+
+export const receiptEditRequests = pgTable("receipt_edit_requests", {
+  id: uuid("id").primaryKey().defaultRandom(), returnId: uuid("return_id").notNull().references(() => bookReturns.id),
+  receiptId: uuid("receipt_id").notNull().references(() => bookReceipts.id), receiptNumber: integer("receipt_number").notNull(),
+  requestedBy: uuid("requested_by").notNull().references(() => people.id), requestedByName: text("requested_by_name").notNull(),
+  reason: text("reason").notNull(), baseVersion: integer("base_version").notNull(),
+  status: text("status", { enum: ["PENDING", "APPROVED", "REJECTED", "USED"] }).notNull().default("PENDING"),
+  reviewNote: text("review_note").notNull().default(""), reviewedBy: uuid("reviewed_by").references(() => people.id),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }), createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export const receiptIssues = pgTable("receipt_issues", {
+  id: uuid("id").primaryKey().defaultRandom(), returnId: uuid("return_id").notNull().references(() => bookReturns.id),
+  receiptNumber: integer("receipt_number").notNull(), raisedBy: uuid("raised_by").notNull().references(() => people.id),
+  raisedByName: text("raised_by_name").notNull(), reason: text("reason").notNull(),
+  status: text("status", { enum: ["OPEN", "RESOLVED"] }).notNull().default("OPEN"), resolution: text("resolution").notNull().default(""),
+  resolvedBy: uuid("resolved_by").references(() => people.id), resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const leftoverBooks = pgTable("leftover_books", {
+  id: uuid("id").primaryKey().defaultRandom(), bookId: uuid("book_id").notNull().references(() => books.id, { onDelete: "restrict" }),
+  returnId: uuid("return_id").notNull().unique().references(() => bookReturns.id, { onDelete: "restrict" }),
+  returnedBy: uuid("returned_by").notNull().references(() => people.id, { onDelete: "restrict" }),
+  code: text("code").notNull().unique(), ordinal: integer("ordinal").notNull(),
+  receiptFrom: integer("receipt_from").notNull(), receiptTo: integer("receipt_to").notNull(),
+  status: text("status", { enum: ["AVAILABLE", "ASSIGNED", "HELD"] }).notNull().default("AVAILABLE"), ...auditColumns(),
+});
 
 export const collectors = pgTable("collectors", {
   id: uuid("id").primaryKey().defaultRandom(),

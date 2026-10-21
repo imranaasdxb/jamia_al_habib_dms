@@ -79,19 +79,19 @@ export function UsersScreen({ account }: { account: Account }) {
 
   return <AppShell account={account} search={search} sampleData={false} headerTitle="users"
     onSearchChange={setSearch}>
-    <div className="page-header">
-      <div><h1 className="page-title">{t("users")}</h1><p className="page-subtitle">{t("usersDescription")}</p></div>
+    <div className={"page-header flex justify-between items-center gap-[20px] mb-[22px]"}>
+      <div><h1 className={"page-title text-[length:34px] font-bold tracking-[-1.3px] [html[lang='ur']_&]:tracking-0"}>{t("users")}</h1><p className={"page-subtitle text-[color:var(--muted-foreground)] mt-[7px]"}>{t("usersDescription")}</p></div>
       <Button onClick={() => { setEditing(null); setOpen(true); }}>
         <Plus size={18} aria-hidden="true" />{t("usersAdd")}</Button>
     </div>
-    {notice && <p className="form-message users-notice" role="status">{t(notice)}</p>}
-    <Card className="users-filter-bar">
-      <span className="users-filter-label"><SlidersHorizontal size={18} aria-hidden="true" />{t("usersFilters")}</span>
-      <div className="users-filter-controls">
-        <label className="users-filter-search"><Search size={17} aria-hidden="true" />
+    {notice && <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8] users-notice mb-[var(--space-gap)]"} role="status">{t(notice)}</p>}
+    <Card className={"users-filter-bar flex items-center justify-between gap-[20px] p-[16px_20px]"}>
+      <span className={"users-filter-label inline-flex items-center gap-[9px] font-semibold [&_svg]:text-[color:var(--primary)]"}><SlidersHorizontal size={18} aria-hidden="true" />{t("usersFilters")}</span>
+      <div className={"users-filter-controls flex items-center justify-end gap-[10px] flex-1"}>
+        <label className={"users-filter-search relative w-[min(100%,_370px)] [&_>_svg]:absolute [&_>_svg]:start-[13px] [&_>_svg]:top-[15px] [&_>_svg]:text-[color:var(--muted-foreground)] [&_.input]:ps-[39px]"}><Search size={17} aria-hidden="true" />
           <Input type="search" maxLength={100} aria-label={t("usersSearch")} placeholder={t("usersSearch")}
             value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /></label>
-        <select className="input users-filter-role" aria-label={t("usersRole")} value={role}
+        <select className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)] users-filter-role w-[165px]"} aria-label={t("usersRole")} value={role}
           onChange={(event) => {
             const value = event.target.value;
             if (value === "ALL" || value === "ADMIN" || value === "STAFF") { setRole(value); setPage(1); }
@@ -101,36 +101,36 @@ export function UsersScreen({ account }: { account: Account }) {
           title={t("usersRefresh")} onClick={invalidate}><RefreshCw size={17} aria-hidden="true" /></Button>
       </div>
     </Card>
-    <div className="users-results-heading"><span><Users size={17} aria-hidden="true" />{t("usersRegistered")}
+    <div className={"users-results-heading flex items-center justify-between gap-[15px] my-[24px_17px] text-[length:12px] min-h-[24px] [&_>_span:first-child]:flex [&_>_span:first-child]:items-center [&_>_span:first-child]:gap-[9px] [&_>_span:first-child]:font-semibold [&_strong]:p-[3px_9px] [&_strong]:bg-[var(--accent)] [&_strong]:text-[color:var(--primary)] [&_strong]:rounded-[var(--radius-pill)]"}><span><Users size={17} aria-hidden="true" />{t("usersRegistered")}
       {data && <strong>{data.total}</strong>}</span>
-      <span role="status" className="muted">{loading && t(data ? "usersUpdating" : "working")}</span></div>
-    {error && <p className="form-message auth-error" role="alert">{t(error)}</p>}
-    <section className="users-card-grid" aria-label={t("usersRegistered")} aria-busy={loading}>
+      <span role="status" className={"muted text-[color:var(--muted-foreground)]"}>{loading && t(data ? "usersUpdating" : "working")}</span></div>
+    {error && <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8] auth-error bg-[var(--danger-soft)] text-[color:var(--danger)]"} role="alert">{t(error)}</p>}
+    <section className={"users-card-grid grid grid-cols-[repeat(3,_minmax(0,_1fr))] gap-[var(--space-gap)] min-[1800px]:grid-cols-[repeat(4,_minmax(0,_1fr))] max-[1000px]:grid-cols-[repeat(2,_minmax(0,_1fr))]"} aria-label={t("usersRegistered")} aria-busy={loading}>
       {data?.users.map((user) => <UserProfileCard key={user.id} user={user} accountId={account.id}
         onEdit={editUser} onView={viewUser} onBlock={chooseBlock} />)}
-      {!data && loading && Array.from({ length: 6 }, (_, index) => <Card key={index} className="users-card-skeleton" aria-hidden="true">
+      {!data && loading && Array.from({ length: 6 }, (_, index) => <Card key={index} className={"users-card-skeleton min-h-[330px] overflow-hidden pb-[24px] [&_span]:block [&_span]:bg-[var(--muted)] [&_span]:[animation:users-pulse_1.4s_ease-in-out_infinite] [&_span:first-child]:h-[82px] [&_span:first-child]:bg-[var(--accent)] [&_span:nth-child(2)]:h-[84px] [&_span:nth-child(2)]:w-[84px] [&_span:nth-child(2)]:rounded-[50%] [&_span:nth-child(2)]:m-[-40px_auto_30px] [&_span:nth-child(2)]:[border:5px_solid_var(--card)] [&_span:nth-child(2)]:relative [&_span:last-child]:h-[12px] [&_span:last-child]:w-[65%] [&_span:last-child]:rounded-[var(--radius-control)] [&_span:last-child]:m-auto"} aria-hidden="true">
         <span /><span /><span /></Card>)}
     </section>
-    {!loading && !error && data?.users.length === 0 && <Card className="users-empty">{t("usersEmpty")}</Card>}
-    {data && <div className="users-pagination"><span className="muted">{t("usersPage")} {data.page}
-      / {Math.max(1, Math.ceil(data.total / data.pageSize))}</span><div className="header-actions">
+    {!loading && !error && data?.users.length === 0 && <Card className={"users-empty p-[44px_20px] text-center text-[color:var(--muted-foreground)]"}>{t("usersEmpty")}</Card>}
+    {data && <div className={"users-pagination flex items-center justify-between gap-[var(--space-gap)] pt-[24px]"}><span className={"muted text-[color:var(--muted-foreground)]"}>{t("usersPage")} {data.page}
+      / {Math.max(1, Math.ceil(data.total / data.pageSize))}</span><div className={"header-actions flex items-center gap-[12px]"}>
         <Button variant="outline" size="small" disabled={loading || data.page <= 1}
           onClick={() => setPage(data.page - 1)}>{t("usersPrevious")}</Button>
         <Button variant="outline" size="small" disabled={loading || data.page * data.pageSize >= data.total}
           onClick={() => setPage(data.page + 1)}>{t("usersNext")}</Button></div></div>}
 
     <Dialog open={open} busy={formBusy} onOpenChange={(value) => { if (!value) finishEditor(); }}
-      className="users-editor-dialog" title={t(editing ? "usersEdit" : "usersAdd")} description={t("usersFormHelp")}>
+      className={"users-editor-dialog w-[min(780px,_calc(100vw_-_40px))] max-h-[90vh] [&_.dialog-description]:text-[length:12px] [&_.dialog-description]:max-w-[620px]"} title={t(editing ? "usersEdit" : "usersAdd")} description={t("usersFormHelp")}>
       {open && <CreateUserForm user={editing ?? undefined} actorId={account.id} onChanged={markChanged}
         onBusyChange={setFormBusy} onSaved={() => { setNotice("usersSavedSuccess"); finishEditor(); }} />}
     </Dialog>
     <Dialog open={viewing !== null} onOpenChange={(value) => { if (!value) setViewing(null); }}
-      className="users-view-dialog" title={t("usersView")} description={t("accountDescription")}>
-      {viewing && <div className="users-profile-details">
-        <span className="user-card-avatar">{viewing.fullName.slice(0, 2).toUpperCase()}
+      className={"users-view-dialog w-[min(540px,_calc(100vw_-_40px))]"} title={t("usersView")} description={t("accountDescription")}>
+      {viewing && <div className={"users-profile-details flex flex-col items-center gap-[12px] pt-[24px] [&_.user-card-avatar]:mt-0 [&_dl]:w-full [&_dl]:my-[12px] [&_dl_>_div]:grid [&_dl_>_div]:grid-cols-[120px_1fr] [&_dl_>_div]:gap-[15px] [&_dl_>_div]:[border-top:1px_solid_var(--border)] [&_dl_>_div]:py-[13px] [&_dt]:text-[color:var(--muted-foreground)] [&_dt]:text-[length:12px] [&_dd]:m-0 [&_dd]:[overflow-wrap:anywhere] [&_dd]:whitespace-pre-wrap [&_dd]:text-[length:12px]"}>
+        <span className={"user-card-avatar relative inline-flex items-center justify-center w-[88px] h-[88px] mt-[-43px] shrink-0 [border:5px_solid_var(--card)] rounded-[50%] bg-[var(--accent)] text-[color:var(--primary)] overflow-hidden [&_img]:absolute [&_img]:inset-0 [&_img]:w-full [&_img]:h-full [&_img]:object-cover"}>{viewing.fullName.slice(0, 2).toUpperCase()}
           {viewing.hasPhoto && <img alt="" src={`/api/v1/users/${viewing.id}/photo?v=${encodeURIComponent(viewing.updatedAt)}`}
             onError={(event) => { event.currentTarget.hidden = true; }} />}</span>
-        <h3>{viewing.fullName}</h3><p className="muted">{t(viewing.role === "ADMIN" ? "superAdmin" : "staff")}</p>
+        <h3>{viewing.fullName}</h3><p className={"muted text-[color:var(--muted-foreground)]"}>{t(viewing.role === "ADMIN" ? "superAdmin" : "staff")}</p>
         <dl>{([["email", viewing.email], ["usersMobile", viewing.phone], ["usersAge", viewing.age],
           ["usersGender", t(viewing.gender === "MALE" ? "usersMale" : viewing.gender === "FEMALE" ? "usersFemale"
             : viewing.gender === "OTHER" ? "usersOther" : "usersUnspecified")],
@@ -145,9 +145,9 @@ export function UsersScreen({ account }: { account: Account }) {
     <Dialog open={blockTarget !== null} busy={blocking} onOpenChange={(value) => { if (!value) setBlockTarget(null); }}
       title={t(blockTarget?.status === "BLOCKED" ? "usersUnblock" : "usersBlock")}
       description={t(blockTarget?.status === "BLOCKED" ? "usersUnblockHelp" : "usersBlockHelp")}>
-      <p className="users-target-name">{blockTarget?.fullName}</p>
-      {notice && <p className="form-message" role="alert">{t(notice)}</p>}
-      <div className="dialog-actions"><Button loading={blocking} onClick={() => void changeBlock()}>
+      <p className={"users-target-name mt-[var(--space-gap)] font-semibold"}>{blockTarget?.fullName}</p>
+      {notice && <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8]"} role="alert">{t(notice)}</p>}
+      <div className={"dialog-actions flex gap-[10px] flex-wrap mt-[24px]"}><Button loading={blocking} onClick={() => void changeBlock()}>
         {t(blocking ? "usersSaving" : blockTarget?.status === "BLOCKED" ? "usersUnblock" : "usersBlock")}</Button>
         <Button variant="outline" disabled={blocking} onClick={() => setBlockTarget(null)}>{t("close")}</Button></div>
     </Dialog>

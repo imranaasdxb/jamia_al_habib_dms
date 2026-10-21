@@ -45,6 +45,7 @@ export async function listMasterRecords(query: MasterQuery, options = false) {
     const where = and(eq(masterRecords.kind, query.kind), isNull(masterRecords.deletedAt),
       options ? eq(masterRecords.active, true) : query.status === "ALL" ? undefined : eq(masterRecords.active, query.status === "ACTIVE"),
       query.level ? eq(masterRecords.level, query.level) : undefined,
+      options && query.parentId ? eq(masterRecords.parentId, query.parentId) : undefined,
       query.search ? or(ilike(masterRecords.nameEn, term), ilike(masterRecords.nameUr, term), ilike(masterRecords.code, term)) : undefined);
     const [result] = await tx.select({ total: count() }).from(masterRecords).where(where);
     const total = result?.total ?? 0;

@@ -33,21 +33,21 @@ export function DashboardCharts({ period, accountId }: { period: DashboardPeriod
 
   return (
     <>
-      <Card className="panel">
-        <div className="panel-header">
-          <h2 className="panel-title"><ChartNoAxesCombined size={21} />{t("collectionsTrend")}</h2>
-          <div className="segmented-control" aria-label={t("collectionsTrend")}>
+      <Card className={"panel p-[var(--space-panel)] min-w-0"}>
+        <div className={"panel-header flex items-center justify-between gap-[12px]"}>
+          <h2 className={"panel-title flex items-center gap-[11px] text-[length:16px] font-[650] [&_>_svg]:text-[color:var(--primary)]"}><ChartNoAxesCombined size={21} />{t("collectionsTrend")}</h2>
+          <div className={"segmented-control inline-flex gap-[2px] bg-[var(--muted)] p-[3px] rounded-[var(--radius-pill)] [&_button]:[border:0] [&_button]:bg-[transparent] [&_button]:text-[color:var(--muted-foreground)] [&_button]:p-[8px_11px] [&_button]:text-[length:10px] [&_button]:rounded-[var(--radius-pill)] [&_button[aria-pressed='true']]:bg-[var(--primary)] [&_button[aria-pressed='true']]:text-[color:var(--primary-foreground)]"} aria-label={t("collectionsTrend")}>
             {(["monthly", "weekly", "yearly"] as const).map((value) => (
               <button key={value} type="button" aria-pressed={interval === value}
                 onClick={() => setInterval(value)}>{t(value)}</button>
             ))}
           </div>
         </div>
-        <div className="chart-summary">
-          <strong className="numeric" dir="ltr">{formatCurrency(snapshot.total)}</strong>
+        <div className={"chart-summary mt-[21px] [&_strong]:block [&_strong]:text-[length:31px] [&_strong]:tracking-[-1px] [&_p]:text-[color:var(--muted-foreground)] [&_p]:mt-[4px] [&_p]:text-[length:12px]"}>
+          <strong className={"numeric tabular-nums"} dir="ltr">{formatCurrency(snapshot.total)}</strong>
           <p>{t(period === "thisMonth" ? "collectionMonth" : "collectionLastMonth")}</p>
         </div>
-        <div className="trend-chart" role="img" aria-label={t("collectionsTrend")}>
+        <div className={"trend-chart w-full h-[222px] mt-[16px] [direction:ltr]"} role="img" aria-label={t("collectionsTrend")}>
           <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <AreaChart data={points} margin={{ top: 12, right: 12, bottom: 0, left: 0 }}>
               <CartesianGrid vertical={false} stroke="var(--border)" />
@@ -67,13 +67,13 @@ export function DashboardCharts({ period, accountId }: { period: DashboardPeriod
           </ResponsiveContainer>
         </div>
       </Card>
-      <Card className="panel">
-        <div className="panel-header">
-          <h2 className="panel-title"><Wallet size={21} />{t("paymentBreakdown")}</h2>
-          <span className="muted text-xs">{t(period)}</span>
+      <Card className={"panel p-[var(--space-panel)] min-w-0"}>
+        <div className={"panel-header flex items-center justify-between gap-[12px]"}>
+          <h2 className={"panel-title flex items-center gap-[11px] text-[length:16px] font-[650] [&_>_svg]:text-[color:var(--primary)]"}><Wallet size={21} />{t("paymentBreakdown")}</h2>
+          <span className={"muted text-[color:var(--muted-foreground)] text-xs"}>{t(period)}</span>
         </div>
-        <div className="payment-content">
-          <div className="payment-chart" role="img" aria-label={t("paymentBreakdown")}>
+        <div className={"payment-content flex items-center justify-between gap-[10px] min-h-[290px]"}>
+          <div className={"payment-chart relative w-[205px] h-[205px] [direction:ltr]"} role="img" aria-label={t("paymentBreakdown")}>
             <PieChart width={205} height={205}>
               <Pie data={payments} dataKey="value" nameKey="name" innerRadius={64}
                 outerRadius={96} startAngle={90} endAngle={-270} paddingAngle={2}
@@ -82,18 +82,18 @@ export function DashboardCharts({ period, accountId }: { period: DashboardPeriod
               </Pie>
               <Tooltip formatter={(value) => formatCurrency(Number(value))} />
             </PieChart>
-            <div className="donut-total">
-              <strong className="numeric" dir="ltr">{formatCurrency(snapshot.total)}</strong>
+            <div className={"donut-total absolute inset-0 flex flex-col items-center justify-center pointer-events-none [&_strong]:text-[length:20px] [&_strong]:tracking-[-.6px] [&_span]:mt-[5px] [&_span]:text-[length:11px] [&_span]:text-[color:var(--muted-foreground)]"}>
+              <strong className={"numeric tabular-nums"} dir="ltr">{formatCurrency(snapshot.total)}</strong>
               <span>{t("total")}</span>
             </div>
           </div>
-          <div className="payment-legend">
+          <div className={"payment-legend flex flex-col gap-[28px] pe-[5px]"}>
             {payments.map((payment, index) => (
               <div key={payment.name}>
-                <span className="legend-label"><span className={index === 0
-                  ? "legend-dot" : "legend-dot legend-dot-secondary"} />{payment.name}</span>
-                <strong className="legend-value numeric" dir="ltr">{formatCurrency(payment.value)}</strong>
-                <p className="legend-percentage numeric">{Math.round(payment.value / snapshot.total * 100)}%</p>
+                <span className={"legend-label flex gap-[9px] items-center text-[length:12px]"}><span className={index === 0
+                  ? "legend-dot w-[10px] h-[10px] rounded-[50%] bg-[var(--chart-primary)]" : "legend-dot w-[10px] h-[10px] rounded-[50%] bg-[var(--chart-primary)] legend-dot-secondary bg-[var(--chart-secondary)]"} />{payment.name}</span>
+                <strong className={"legend-value block ms-[19px] font-[650] mt-[7px] numeric tabular-nums"} dir="ltr">{formatCurrency(payment.value)}</strong>
+                <p className={"legend-percentage ms-[19px] mt-[5px] text-[color:var(--muted-foreground)] text-[length:11px] numeric tabular-nums"}>{Math.round(payment.value / snapshot.total * 100)}%</p>
               </div>
             ))}
           </div>

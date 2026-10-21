@@ -35,6 +35,7 @@ export function masterEditorSchema(kind: MasterKind) {
 export const masterRowSchema = masterValuesSchema.extend({ id: z.uuid(), kind: masterKindSchema,
   builtIn: z.boolean(), updatedAt: z.iso.datetime(), parentNameEn: z.string(), parentNameUr: z.string() });
 export const masterQuerySchema = z.object({
+  parentId: z.uuid().optional(),
   kind: masterKindSchema, search: z.string().trim().max(100).default(""),
   status: z.enum(["ALL", "ACTIVE", "INACTIVE"]).default("ALL"),
   level: z.enum(["", "STATE", "DISTRICT", "BLOCK", "VILLAGE"]).default(""),

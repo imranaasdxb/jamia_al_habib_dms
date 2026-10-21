@@ -65,6 +65,21 @@ export async function readProfilePhoto(key: string) {
   return response.arrayBuffer();
 }
 
+export async function uploadReceiptPhoto(receiptId: string, file: File) {
+  if (!z.uuid().safeParse(receiptId).success || file.size === 0 || file.size > 2 * 1024 * 1024
+    || !["image/jpeg", "image/png", "image/webp"].includes(file.type)) throw new AuthFailure("INVALID_PHOTO", 400);
+  let bytes: Buffer;
+  try {
+    const image = sharp(Buffer.from(await file.arrayBuffer()), { limitInputPixels: 16000000, failOn: "warning" });
+    const metadata = await image.metadata();
+    if (!metadata.format || !["jpeg", "png", "webp"].includes(metadata.format) || (metadata.pages ?? 1) > 1) throw new Error("Unsupported image");
+    bytes = await image.rotate().resize(1800, 2400, { fit: "inside", withoutEnlargement: true }).jpeg({ quality: 88 }).toBuffer();
+  } catch { throw new AuthFailure("INVALID_PHOTO", 400); }
+  const key = `receipts/${receiptId}/${randomUUID()}.jpg`;
+  await storageRequest("PUT", key, bytes);
+  return key;
+}
+
 export async function removeProfilePhoto(key: string) {
   await storageRequest("DELETE", key);
 }

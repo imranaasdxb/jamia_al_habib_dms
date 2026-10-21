@@ -35,12 +35,12 @@ export function MasterForm({ accountId, kind, record, onBusyChange, onSaved }: {
     } catch (error) { setError(mastersError(error)); }
     finally { onBusyChange(false); }
   }
-  return <form className="auth-form masters-form" noValidate onSubmit={handleSubmit(submit)}>
-    <fieldset disabled={isSubmitting} className="masters-fields">
-      <div className="masters-form-grid"><AuthField id="master-code" label={t("mastersCode")} required maxLength={40}
+  return <form className={"auth-form flex flex-col gap-[19px] mt-[25px] masters-form mt-[24px] [&_textarea]:[font:inherit] [&_textarea]:[resize:vertical] [&_input[lang='ur']]:[font-family:var(--font-urdu),_serif]"} noValidate onSubmit={handleSubmit(submit)}>
+    <fieldset disabled={isSubmitting} className={"masters-fields [border:0] p-0 m-0 min-w-0 grid gap-[22px]"}>
+      <div className={"masters-form-grid grid grid-cols-[repeat(2,_minmax(0,_1fr))] gap-[22px] max-[700px]:grid-cols-[1fr]"}><AuthField id="master-code" label={t("mastersCode")} required maxLength={40}
         readOnly={Boolean(record)} hint={t("mastersCodeHint")} error={errors.code ? t("mastersInvalidField") : undefined} {...register("code")} />
-        <div className="masters-active"><label className="field-label" htmlFor="master-active">{t("status")}</label>
-          <label className="masters-checkbox"><input id="master-active" type="checkbox" {...register("active")} />{t("usersActive")}</label></div>
+        <div className={"masters-active flex flex-col"}><label className={"field-label block text-[length:12px] font-semibold mb-[8px]"} htmlFor="master-active">{t("status")}</label>
+          <label className={"masters-checkbox inline-flex items-center gap-[9px] min-h-[38px] text-[length:12px] [&_input]:[accent-color:var(--primary)]"}><input id="master-active" type="checkbox" {...register("active")} />{t("usersActive")}</label></div>
         <AuthField id="master-name-en" label={t("mastersNameEn")} required maxLength={120} dir="ltr"
           error={errors.nameEn ? t("mastersInvalidField") : undefined} {...register("nameEn")} />
         <AuthField id="master-name-ur" label={t("mastersNameUr")} required maxLength={120} dir="rtl" lang="ur"
@@ -48,9 +48,9 @@ export function MasterForm({ accountId, kind, record, onBusyChange, onSaved }: {
         {kind === "EDITION" && <AuthField id="master-effective" label={t("mastersEffective")} type="date" required
           error={errors.effectiveFrom ? t("mastersInvalidField") : undefined} {...register("effectiveFrom")} />}
         {kind === "TOKEN_VALUE" && <AuthField id="master-token" label={t("mastersTokenRupees")} readOnly {...register("tokenValue")} />}
-        {kind === "AREA" && <div><label className="field-label" htmlFor="master-area-level">{t("mastersAreaLevel")} *</label>
-          {record ? <><input id="master-area-level" className="input" readOnly value={level ? t(masterLevelLabels[level]) : ""} />
-            <input type="hidden" {...register("level")} /></> : <select id="master-area-level" className="input" {...register("level")}
+        {kind === "AREA" && <div><label className={"field-label block text-[length:12px] font-semibold mb-[8px]"} htmlFor="master-area-level">{t("mastersAreaLevel")} *</label>
+          {record ? <><input id="master-area-level" className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} readOnly value={level ? t(masterLevelLabels[level]) : ""} />
+            <input type="hidden" {...register("level")} /></> : <select id="master-area-level" className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} {...register("level")}
               onChange={(event) => {
                 void register("level").onChange(event);
                 setValue("parentId", "", { shouldDirty: true, shouldValidate: true });
@@ -69,17 +69,17 @@ export function MasterForm({ accountId, kind, record, onBusyChange, onSaved }: {
             error={errors.upiId ? t("mastersInvalidField") : undefined} {...register("upiId")} />
         </>}
       </div>
-      {["DONATION_HEAD", "UPI_APP", "RECEIPT_REASON", "FLAG_REASON"].includes(kind) && <label className="masters-checkbox">
+      {["DONATION_HEAD", "UPI_APP", "RECEIPT_REASON", "FLAG_REASON"].includes(kind) && <label className={"masters-checkbox inline-flex items-center gap-[9px] min-h-[38px] text-[length:12px] [&_input]:[accent-color:var(--primary)]"}>
         <input type="checkbox" disabled={kind === "DONATION_HEAD" && ["OTHER_OBLIGATORY", "OTHER_VOLUNTARY", "OTHER_SPECIFIED"].includes(record?.code ?? "")}
           {...register("needsDetail")} />{t("mastersNeedsDetail")}</label>}
-      <div><label className="field-label" htmlFor="master-notes">{t(kind === "EDITION" ? "mastersDesignNotes" : "usersRemarks")}</label>
-        <textarea id="master-notes" className="input" rows={3} maxLength={1000} {...register("notes")} />
-        {errors.notes && <span className="field-error">{t("mastersInvalidField")}</span>}</div>
+      <div><label className={"field-label block text-[length:12px] font-semibold mb-[8px]"} htmlFor="master-notes">{t(kind === "EDITION" ? "mastersDesignNotes" : "usersRemarks")}</label>
+        <textarea id="master-notes" className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} rows={3} maxLength={1000} {...register("notes")} />
+        {errors.notes && <span className={"field-error block mt-[7px] text-[length:11px] text-[color:var(--danger)]"}>{t("mastersInvalidField")}</span>}</div>
       {record && <AuthField id="master-reason" label={t("settingsReason")} required maxLength={500} value={reason}
         hint={t("peopleReasonHint")} onChange={(event) => setReason(event.target.value)} />}
     </fieldset>
-    {error && <p className="form-message auth-error" role="alert">{t(error)}</p>}
-    <div className="masters-save"><Button type="submit" loading={isSubmitting}
+    {error && <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8] auth-error bg-[var(--danger-soft)] text-[color:var(--danger)]"} role="alert">{t(error)}</p>}
+    <div className={"masters-save flex justify-end [border-top:1px_solid_var(--border)] pt-[20px]"}><Button type="submit" loading={isSubmitting}
       disabled={!isValid || Boolean(record && (!isDirty || reason.trim().length < 3))}>{t(isSubmitting ? "usersSaving" : "mastersSave")}</Button></div>
   </form>;
 }

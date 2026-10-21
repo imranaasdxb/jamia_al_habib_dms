@@ -22,20 +22,20 @@ export function MasterParentSelect({ accountId, bank, donation = false, level, v
   const query = usePageQuery(`${accountId}:masters:options:${kind}:${params}`, fetchOptions, { delay: search ? 300 : 0 });
   const loading = query.loading || query.stale;
   const options = query.data?.data ?? [];
-  return <div className="masters-parent-field">
-    <label htmlFor="master-parent" className="field-label">{t(donation ? "mastersDonationCategory" : bank ? "mastersBank" : "mastersParent")} *</label>
+  return <div className={"masters-parent-field grid gap-[8px] [&_.field-label]:mb-0"}>
+    <label htmlFor="master-parent" className={"field-label block text-[length:12px] font-semibold mb-[8px]"}>{t(donation ? "mastersDonationCategory" : bank ? "mastersBank" : "mastersParent")} *</label>
     <Input type="search" maxLength={100} placeholder={t("mastersParentSearch")} aria-label={t("mastersParentSearch")}
       value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} />
-    <select id="master-parent" className="input" required aria-invalid={error} aria-busy={loading}
+    <select id="master-parent" className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} required aria-invalid={error} aria-busy={loading}
       aria-describedby={error ? "master-parent-error" : undefined} value={value} onChange={(event) => onChange(event.target.value)}>
       <option value="">{t("mastersChooseParent")}</option>
       {value && !options.some((row) => row.id === value) && <option value={value}>{currentName || value}</option>}
       {options.map((row) => <option key={row.id} value={row.id}>{language === "ur" ? row.nameUr : row.nameEn}</option>)}
     </select>
-    {loading && <span className="field-hint" role="status">{t("working")}</span>}
-    {error && <span id="master-parent-error" className="field-error" role="alert">{t("mastersInvalidParent")}</span>}
-    {query.error != null && <span className="field-error" role="alert">{t(mastersError(query.error))}</span>}
-    {query.data && query.data.meta.total > query.data.meta.pageSize && <div className="masters-parent-pagination">
+    {loading && <span className={"field-hint block mt-[8px] text-[length:11px] text-[color:var(--muted-foreground)] leading-[1.7]"} role="status">{t("working")}</span>}
+    {error && <span id="master-parent-error" className={"field-error block mt-[7px] text-[length:11px] text-[color:var(--danger)]"} role="alert">{t("mastersInvalidParent")}</span>}
+    {query.error != null && <span className={"field-error block mt-[7px] text-[length:11px] text-[color:var(--danger)]"} role="alert">{t(mastersError(query.error))}</span>}
+    {query.data && query.data.meta.total > query.data.meta.pageSize && <div className={"masters-parent-pagination flex justify-between"}>
       <Button variant="ghost" size="small" disabled={loading || query.data.meta.page <= 1} onClick={() => setPage(query.data!.meta.page - 1)}>{t("usersPrevious")}</Button>
       <Button variant="ghost" size="small" disabled={loading || query.data.meta.page * query.data.meta.pageSize >= query.data.meta.total}
         onClick={() => setPage(query.data!.meta.page + 1)}>{t("usersNext")}</Button>

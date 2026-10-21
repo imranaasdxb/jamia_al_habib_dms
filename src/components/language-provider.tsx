@@ -41,7 +41,7 @@ export function LanguageSwitch() {
   const { language, setLanguage } = useLanguage();
 
   return (
-    <div className="language-switch" aria-label="English / اردو">
+    <div className={"language-switch inline-flex gap-[4px] p-[4px] bg-[var(--muted)] [border:1px_solid_var(--border)] rounded-[var(--radius-control)] [&_button]:[border:0] [&_button]:bg-[transparent] [&_button]:text-[color:var(--muted-foreground)] [&_button]:rounded-[7px] [&_button]:p-[7px_12px] [&_button]:text-[length:12px] [&_button]:min-w-[48px] [&_button[aria-pressed='true']]:bg-[var(--accent)] [&_button[aria-pressed='true']]:text-[color:var(--accent-foreground)]"} aria-label="English / اردو">
       {(["en", "ur"] as const).map((value) => (
         <button
           key={value}

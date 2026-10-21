@@ -144,15 +144,15 @@ export function CreateUserForm({ onSaved, onChanged, onBusyChange, actorId, user
       setMessage(null); setRemovePhoto(false); setFile(selected);
     }} />;
 
-  if (flow) return <form className="auth-form users-editor users-verification-form" noValidate
+  if (flow) return <form className={"auth-form flex flex-col gap-[19px] mt-[25px] users-editor gap-[21px] [&_.input]:min-h-[44px] [&_.input]:py-[11px] [&_.field-label]:text-[length:12px] [&_.field-label]:font-[550] [&_.field-hint]:text-[length:10px] [&_textarea]:[font:inherit] [&_textarea]:[resize:vertical] users-verification-form [&_.otp-input]:max-w-[310px] [&_.otp-input]:mx-auto [&_>_.button]:min-h-[46px]"} noValidate
     onSubmit={(event) => { event.preventDefault(); void verify(); }}>
-    <div className="users-form-steps"><span data-complete="true">1 · {t("usersProfileDetails")}</span>
+    <div className={"users-form-steps flex items-center gap-[8px] [&_span]:flex-1 [&_span]:p-[10px_13px] [&_span]:rounded-[var(--radius-control)] [&_span]:text-[length:11px] [&_span]:text-[color:var(--muted-foreground)] [&_span]:bg-[var(--muted)] [&_[data-current='true']]:bg-[var(--accent)] [&_[data-current='true']]:text-[color:var(--primary)] [&_[data-current='true']]:font-[650] [&_[data-complete='true']]:text-[color:var(--primary)] [&_[data-complete='true']]:bg-[var(--primary-soft)]"}><span data-complete="true">1 · {t("usersProfileDetails")}</span>
       <span data-current="true">2 · {t("verifyTitle")}</span></div>
-    <p className="form-message">{t(flow.proofComplete ? "usersProofComplete" : "usersVerifyHelp")} <strong dir="ltr">{flow.email}</strong></p>
+    <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8]"}>{t(flow.proofComplete ? "usersProofComplete" : "usersVerifyHelp")} <strong dir="ltr">{flow.email}</strong></p>
     {photo}
     {!flow.proofComplete && <AuthField id="user-otp" label={t("otp")} value={code} inputMode="numeric" autoComplete="one-time-code"
-      className="otp-input" maxLength={6} dir="ltr" disabled={Boolean(busy)} required onChange={(event) => setCode(event.target.value)} />}
-    {message && <p className="form-message auth-error" role="alert">{t(message)}</p>}
+      className={"otp-input tracking-[10px] text-[length:24px] text-center"} maxLength={6} dir="ltr" disabled={Boolean(busy)} required onChange={(event) => setCode(event.target.value)} />}
+    {message && <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8] auth-error bg-[var(--danger-soft)] text-[color:var(--danger)]"} role="alert">{t(message)}</p>}
     <Button type="submit" loading={busy === "verify"} disabled={Boolean(busy)}>
       {t(busy === "verify" ? phase : "usersVerifyComplete")}</Button>
     {!flow.proofComplete && <Button variant="outline" loading={busy === "resend"}
@@ -161,12 +161,12 @@ export function CreateUserForm({ onSaved, onChanged, onBusyChange, actorId, user
     </Button>}
   </form>;
 
-  return <form className="auth-form users-editor" noValidate onSubmit={handleSubmit(submit)}>
-    {onboarding && <div className="users-form-steps"><span data-current="true">1 · {t("usersProfileDetails")}</span>
+  return <form className={"auth-form flex flex-col gap-[19px] mt-[25px] users-editor gap-[21px] [&_.input]:min-h-[44px] [&_.input]:py-[11px] [&_.field-label]:text-[length:12px] [&_.field-label]:font-[550] [&_.field-hint]:text-[length:10px] [&_textarea]:[font:inherit] [&_textarea]:[resize:vertical]"} noValidate onSubmit={handleSubmit(submit)}>
+    {onboarding && <div className={"users-form-steps flex items-center gap-[8px] [&_span]:flex-1 [&_span]:p-[10px_13px] [&_span]:rounded-[var(--radius-control)] [&_span]:text-[length:11px] [&_span]:text-[color:var(--muted-foreground)] [&_span]:bg-[var(--muted)] [&_[data-current='true']]:bg-[var(--accent)] [&_[data-current='true']]:text-[color:var(--primary)] [&_[data-current='true']]:font-[650] [&_[data-complete='true']]:text-[color:var(--primary)] [&_[data-complete='true']]:bg-[var(--primary-soft)]"}><span data-current="true">1 · {t("usersProfileDetails")}</span>
       <span>2 · {t("verifyTitle")}</span></div>}
     {photo}
-    <h3 className="users-form-section-title">{t("usersProfileDetails")}</h3>
-    <div className="users-form-grid">
+    <h3 className={"users-form-section-title text-[length:12px] font-[650] pt-[16px] [border-top:1px_solid_var(--border)]"}>{t("usersProfileDetails")}</h3>
+    <div className={"users-form-grid grid grid-cols-[repeat(2,_minmax(0,_1fr))] gap-[20px] max-[600px]:grid-cols-[1fr]"}>
       <AuthField id="user-name" label={t("fullName")} autoComplete="name" required maxLength={100}
         error={fieldError(errors.fullName?.message)} {...register("fullName")} />
       <AuthField id="user-email" label={t("email")} type="email" autoComplete="email" required
@@ -174,35 +174,35 @@ export function CreateUserForm({ onSaved, onChanged, onBusyChange, actorId, user
         error={fieldError(errors.email?.message)} {...register("email")} />
       <AuthField id="user-phone" label={t("usersMobile")} type="tel" inputMode="numeric" required maxLength={10}
         dir="ltr" hint={t("usersMobileHint")} error={fieldError(errors.phone?.message)} {...register("phone")} />
-      <div><label className="field-label" htmlFor="user-role">{t("usersRole")}</label>
-        {isSelf ? <><input id="user-role" className="input" readOnly value={t("superAdmin")} />
-          <input type="hidden" {...register("role")} /></> : <select id="user-role" className="input" {...register("role")}>
+      <div><label className={"field-label block text-[length:12px] font-semibold mb-[8px]"} htmlFor="user-role">{t("usersRole")}</label>
+        {isSelf ? <><input id="user-role" className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} readOnly value={t("superAdmin")} />
+          <input type="hidden" {...register("role")} /></> : <select id="user-role" className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} {...register("role")}>
           <option value="STAFF">{t("staff")}</option><option value="ADMIN">{t("superAdmin")}</option>
         </select>}</div>
       <AuthField id="user-age" label={t("usersAge")} type="number" min={18} max={80}
         error={fieldError(errors.age?.message)} {...register("age")} />
-      <div><label className="field-label" htmlFor="user-gender">{t("usersGender")}</label>
-        <select id="user-gender" className="input" {...register("gender")}>
+      <div><label className={"field-label block text-[length:12px] font-semibold mb-[8px]"} htmlFor="user-gender">{t("usersGender")}</label>
+        <select id="user-gender" className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} {...register("gender")}>
           <option value="UNSPECIFIED">{t("usersUnspecified")}</option><option value="MALE">{t("usersMale")}</option>
           <option value="FEMALE">{t("usersFemale")}</option><option value="OTHER">{t("usersOther")}</option>
         </select></div>
-      <div><label className="field-label" htmlFor="user-language">{t("usersLanguage")}</label>
-        <select id="user-language" className="input" {...register("language")}>
+      <div><label className={"field-label block text-[length:12px] font-semibold mb-[8px]"} htmlFor="user-language">{t("usersLanguage")}</label>
+        <select id="user-language" className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} {...register("language")}>
           <option value="en">English</option><option value="ur">اردو</option>
         </select></div>
     </div>
-    <div><label className="field-label" htmlFor="user-address">{t("usersAddress")}</label>
-      <textarea id="user-address" className="input" rows={2} maxLength={1000} {...register("address")} /></div>
-    <div><label className="field-label" htmlFor="user-remarks">{t("usersRemarks")}</label>
-      <textarea id="user-remarks" className="input" rows={2} maxLength={1000} {...register("remarks")} /></div>
-    {onboarding && <><h3 className="users-form-section-title">{t("usersLoginDetails")}</h3><div className="users-form-grid">
+    <div><label className={"field-label block text-[length:12px] font-semibold mb-[8px]"} htmlFor="user-address">{t("usersAddress")}</label>
+      <textarea id="user-address" className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} rows={2} maxLength={1000} {...register("address")} /></div>
+    <div><label className={"field-label block text-[length:12px] font-semibold mb-[8px]"} htmlFor="user-remarks">{t("usersRemarks")}</label>
+      <textarea id="user-remarks" className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} rows={2} maxLength={1000} {...register("remarks")} /></div>
+    {onboarding && <><h3 className={"users-form-section-title text-[length:12px] font-[650] pt-[16px] [border-top:1px_solid_var(--border)]"}>{t("usersLoginDetails")}</h3><div className={"users-form-grid grid grid-cols-[repeat(2,_minmax(0,_1fr))] gap-[20px] max-[600px]:grid-cols-[1fr]"}>
       <AuthField id="user-password" label={t("password")} isPassword autoComplete="new-password" required
         maxLength={128} hint={t("passwordHint")} error={fieldError(errors.password?.message)} {...register("password")} />
       <AuthField id="user-confirm" label={t("confirmPassword")} isPassword autoComplete="new-password" required
         maxLength={128} error={fieldError(errors.confirmPassword?.message)} {...register("confirmPassword")} />
     </div></>}
-    {message && <p className="form-message auth-error" role="alert">{t(message)}</p>}
-    <div className="users-form-footer"><Button type="submit" loading={isSubmitting}
+    {message && <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8] auth-error bg-[var(--danger-soft)] text-[color:var(--danger)]"} role="alert">{t(message)}</p>}
+    <div className={"users-form-footer flex justify-end sticky bottom-[-30px] z-[2] py-[18px] bg-[var(--card)] [border-top:1px_solid_var(--border)] mb-[-20px]"}><Button type="submit" loading={isSubmitting}
       disabled={!onboarding && !isDirty && !file && !removePhoto}>
       {t(isSubmitting ? phase : onboarding ? "usersCreateSendOtp" : "usersSave")}</Button></div>
   </form>;

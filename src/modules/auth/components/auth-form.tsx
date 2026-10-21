@@ -94,7 +94,7 @@ export function AuthForm({ screen, email = "" }: { screen: AuthScreen; email?: s
   }
 
   return (
-    <form className="auth-form" noValidate onSubmit={handleSubmit(submit)}>
+    <form className={"auth-form flex flex-col gap-[19px] mt-[25px]"} noValidate onSubmit={handleSubmit(submit)}>
       {screen === "signup" && (
         <AuthField id="full-name" label={t("fullName")} placeholder={t("namePlaceholder")}
           autoComplete="name" maxLength={100} required error={errors.fullName?.message}
@@ -118,25 +118,25 @@ export function AuthForm({ screen, email = "" }: { screen: AuthScreen; email?: s
           error={errors.confirmPassword?.message} {...register("confirmPassword")} />
       )}
       {screen === "login" && (
-        <div className="auth-secondary"><Link className="text-link" href="/forgot-password">
+        <div className={"auth-secondary flex justify-end mt-[-8px]"}><Link className={"text-link text-[color:var(--primary)] bg-[transparent] [border:0] p-[5px_0] inline-flex gap-[6px] items-center text-[length:11px] font-semibold"} href="/forgot-password">
           {t("forgotPassword")}</Link></div>
       )}
       {isVerification && <>
-        <p className="field-hint" dir="ltr">{email}</p>
-        <AuthField id="verification-code" label={t("otp")} className="otp-input numeric"
+        <p className={"field-hint block mt-[8px] text-[length:11px] text-[color:var(--muted-foreground)] leading-[1.7]"} dir="ltr">{email}</p>
+        <AuthField id="verification-code" label={t("otp")} className={"otp-input tracking-[10px] text-[length:24px] text-center numeric tabular-nums"}
           inputMode="numeric" autoComplete="one-time-code" maxLength={6} dir="ltr"
           hint={t("otpHint")} required error={errors.code?.message} {...register("code")} />
       </>}
-      <Button type="submit" className="auth-submit" disabled={isSubmitting || isResending}>
+      <Button type="submit" className={"auth-submit w-full mt-[2px]"} disabled={isSubmitting || isResending}>
         {t(isSubmitting ? "working" : submitLabels[screen])}
-        <ArrowRight size={17} className="directional-icon" aria-hidden="true" />
+        <ArrowRight size={17} className={"directional-icon [html[dir='rtl']_&]:[transform:scaleX(-1)]"} aria-hidden="true" />
       </Button>
       {isVerification && (
         <Button variant="ghost" disabled={resendWait > 0 || isResending || isSubmitting} onClick={resendCode}>
           {resendWait > 0 ? `${t("authResendWait")} ${resendWait} ${t("seconds")}` : t("resendCode")}
         </Button>
       )}
-      {message && <div className={isError ? "form-message auth-error" : "form-message"}
+      {message && <div className={isError ? "form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8] auth-error bg-[var(--danger-soft)] text-[color:var(--danger)]" : "form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8]"}
         role={isError ? "alert" : "status"} aria-live="polite">{t(message)}</div>}
     </form>
   );

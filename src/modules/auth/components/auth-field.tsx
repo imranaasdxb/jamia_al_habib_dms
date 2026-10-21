@@ -23,8 +23,8 @@ export function AuthField({ id, label, error, hint, isPassword, type, ...props }
 
   return (
     <div>
-      <label htmlFor={id} className="field-label">{label} {props.required && <span aria-hidden="true">*</span>}</label>
-      <div className={isPassword ? "password-field" : undefined}>
+      <label htmlFor={id} className={"field-label block text-[length:12px] font-semibold mb-[8px]"}>{label} {props.required && <span aria-hidden="true">*</span>}</label>
+      <div className={isPassword ? "password-field relative [&_.input]:pe-[48px]" : undefined}>
         <Input
           {...props}
           id={id}
@@ -33,15 +33,15 @@ export function AuthField({ id, label, error, hint, isPassword, type, ...props }
           aria-describedby={describedBy || undefined}
         />
         {isPassword && (
-          <Button variant="ghost" size="icon" className="password-toggle"
+          <Button variant="ghost" size="icon" className={"password-toggle absolute end-[4px] top-[3px]"}
             aria-label={t(isVisible ? "hidePassword" : "showPassword")}
             aria-pressed={isVisible} onClick={() => setIsVisible(!isVisible)}>
             {isVisible ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}
           </Button>
         )}
       </div>
-      {hint && <span id={`${id}-hint`} className="field-hint">{hint}</span>}
-      {error && <span id={`${id}-error`} className="field-error" role="alert">{error}</span>}
+      {hint && <span id={`${id}-hint`} className={"field-hint block mt-[8px] text-[length:11px] text-[color:var(--muted-foreground)] leading-[1.7]"}>{hint}</span>}
+      {error && <span id={`${id}-error`} className={"field-error block mt-[7px] text-[length:11px] text-[color:var(--danger)]"} role="alert">{error}</span>}
     </div>
   );
 }

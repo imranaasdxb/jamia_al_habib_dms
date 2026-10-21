@@ -35,7 +35,7 @@ export function userEditorSchema(onboarding: boolean) {
     .superRefine((values, context) => {
       if (!onboarding) return;
       const parsed = createUserSchema.safeParse(values);
-      if (!parsed.success) for (const issue of parsed.error.issues) context.addIssue(issue);
+      if (!parsed.success) for (const issue of parsed.error.issues) context.addIssue({ ...issue });
     });
 }
 

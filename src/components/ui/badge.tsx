@@ -6,5 +6,11 @@ interface BadgeProps extends ComponentProps<"span"> {
 }
 
 export function Badge({ className, tone = "neutral", ...props }: BadgeProps) {
-  return <span className={cn("badge", `badge-${tone}`, className)} {...props} />;
+  const tones = {
+    success: "bg-[var(--success-soft)] text-[var(--success)]",
+    warning: "bg-[var(--warning-soft)] text-[var(--warning)]",
+    neutral: "bg-muted text-muted-foreground",
+    danger: "bg-[var(--danger-soft)] text-[var(--danger)]",
+  };
+  return <span className={cn("inline-flex items-center whitespace-nowrap rounded-[var(--radius-control)] px-2.5 py-1 text-[11px] font-medium", tones[tone], className)} {...props} />;
 }

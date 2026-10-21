@@ -5,8 +5,7 @@ import type { MessageKey } from "@/lib/i18n/messages";
 
 export const masterCategories: { kind: MasterKind; label: MessageKey }[] = [
   { kind: "EDITION", label: "mastersEditions" }, { kind: "BOOK_TYPE", label: "mastersBookTypes" },
-  { kind: "TOKEN_VALUE", label: "mastersTokenValues" }, { kind: "DONATION_CATEGORY", label: "mastersDonationCategories" },
-  { kind: "DONATION_HEAD", label: "mastersHeads" },
+  { kind: "TOKEN_VALUE", label: "mastersTokenValues" }, { kind: "DONATION_HEAD", label: "mastersHeads" },
   { kind: "RESPONSIBILITY", label: "mastersResponsibilities" }, { kind: "AREA", label: "mastersAreas" },
   { kind: "PAYMENT_MODE", label: "mastersPaymentModes" }, { kind: "UPI_APP", label: "mastersUpiApps" },
   { kind: "BANK", label: "mastersBanks" }, { kind: "BANK_ACCOUNT", label: "mastersBankAccounts" },

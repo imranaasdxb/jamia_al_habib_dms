@@ -35,6 +35,6 @@ export function LogoutButton() {
     <Button variant="outline" disabled={isPending} onClick={logout}>
       <LogOut size={16} aria-hidden="true" />{t(isPending ? "working" : "logout")}
     </Button>
-    {hasError && <p className="field-error" role="alert">{t("authActionFailed")}</p>}
+    {hasError && <p className={"field-error block mt-[7px] text-[length:11px] text-[color:var(--danger)]"} role="alert">{t("authActionFailed")}</p>}
   </div>;
 }

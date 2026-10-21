@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 import {
-  Bell, BookOpen, ChevronDown, ClipboardCheck, FilePenLine, Flag, HandCoins,
+  Bell, BookOpen, ChevronDown, ClipboardCheck, Flag, HandCoins,
   House, Search, Settings, Users, UserRound, ChartNoAxesCombined,
 } from "lucide-react";
 import { LanguageSwitch, useLanguage } from "@/components/language-provider";
@@ -24,7 +24,6 @@ const navigation = [
   { label: "dashboard", icon: House },
   { label: "users", icon: Users },
   { label: "books", icon: BookOpen },
-  { label: "receiptEntry", icon: FilePenLine },
   { label: "donations", icon: HandCoins },
   { label: "donors", icon: UserRound },
   { label: "reports", icon: ChartNoAxesCombined },
@@ -52,6 +51,9 @@ export function AppShell({ children, search, onSearchChange, account,
     || pathname === "/people" || pathname.startsWith("/people/");
   const [usersExpanded, setUsersExpanded] = usePageState(`${account.id}:navigation:users`, usersActive);
   const submenuId = useId();
+  const booksActive = pathname === "/books" || pathname.startsWith("/books/") || pathname.startsWith("/receipt-entry");
+  const [booksExpanded, setBooksExpanded] = usePageState(`${account.id}:navigation:books`, booksActive);
+  const booksSubmenuId = useId();
   const [activeDialog, setActiveDialog] = useState<MessageKey | null>(null);
   const isAccountDialog = activeDialog === "account";
   const initials = account.fullName.split(" ").filter(Boolean).slice(0, 2)
@@ -60,42 +62,56 @@ export function AppShell({ children, search, onSearchChange, account,
   useEffect(() => { setLanguage(account.language); }, [account.language, setLanguage]);
 
   return (
-    <div className="app-shell">
+    <div className={"app-shell min-w-[1366px] min-h-[100vh]"}>
       <SessionActivity timeoutMinutes={account.sessionTimeoutMinutes} accountId={account.id} />
-      <aside className="sidebar">
+      <aside className={"sidebar w-[var(--sidebar-width)] fixed inset-y-0 start-0 p-[28px_18px] bg-[var(--card)] [border-inline-end:1px_solid_var(--border)] flex flex-col z-[20] [&_.brand]:mx-[8px] [&_.brand]:mb-[35px]"}>
         <Link href="/dashboard" aria-label={t("dashboard")}><Brand /></Link>
-        <nav className="sidebar-nav" aria-label={t("donationManagement")}>
+        <nav className={"sidebar-nav flex flex-col gap-[8px]"} aria-label={t("donationManagement")}>
           {navigation.filter((item) => (item.label !== "settings" && item.label !== "masters") || account.role === "ADMIN")
             .map(({ label, icon: Icon }) => label === "users" ? (
             <div key={label} className="nav-group">
-              <button type="button" className="nav-item nav-group-trigger" data-active={usersActive || undefined}
+              <button type="button" className={"nav-item flex items-center gap-[15px] w-full min-h-[48px] [border:0] p-[10px_16px] rounded-[var(--radius-control)] text-start bg-[transparent] text-[color:var(--muted-foreground)] [&:hover]:bg-[var(--muted)] [&[aria-current='page']]:text-[color:var(--primary-hover)] [&[aria-current='page']]:bg-[var(--accent)] [&[aria-current='page']]:font-semibold nav-group-trigger [&_>_span]:flex-1 [&_>_span]:text-start [&[data-active='true']]:text-[color:var(--primary-hover)] [&[data-active='true']]:font-semibold [&[aria-expanded='true']_.nav-group-chevron]:[transform:rotate(180deg)]"} data-active={usersActive || undefined}
                 aria-expanded={usersExpanded} aria-controls={submenuId} onClick={() => setUsersExpanded((value) => !value)}>
                 <Icon size={21} strokeWidth={1.7} aria-hidden="true" /><span>{t("users")}</span>
-                <ChevronDown size={16} className="nav-group-chevron" aria-hidden="true" />
+                <ChevronDown size={16} className={"nav-group-chevron [transition:transform_.15s_ease]"} aria-hidden="true" />
               </button>
-              <div id={submenuId} className="nav-submenu" hidden={!usersExpanded}>
-                {account.role === "ADMIN" && <Link className="nav-item" href="/users"
+              <div id={submenuId} className={"nav-submenu flex flex-col gap-[4px] my-[5px] ms-[25px] ps-[12px] [border-inline-start:1px_solid_var(--border)] [&[hidden]]:hidden [&_.nav-item]:min-h-[39px] [&_.nav-item]:text-[length:12px] [&_.nav-item]:px-[13px]"} hidden={!usersExpanded}>
+                {account.role === "ADMIN" && <Link className={"nav-item flex items-center gap-[15px] w-full min-h-[48px] [border:0] p-[10px_16px] rounded-[var(--radius-control)] text-start bg-[transparent] text-[color:var(--muted-foreground)] [&:hover]:bg-[var(--muted)] [&[aria-current='page']]:text-[color:var(--primary-hover)] [&[aria-current='page']]:bg-[var(--accent)] [&[aria-current='page']]:font-semibold"} href="/users"
                   aria-current={pathname === "/users" ? "page" : undefined}>{t("navAdmins")}</Link>}
-                <Link className="nav-item" href="/people" aria-current={pathname === "/people" ? "page" : undefined}>
+                <Link className={"nav-item flex items-center gap-[15px] w-full min-h-[48px] [border:0] p-[10px_16px] rounded-[var(--radius-control)] text-start bg-[transparent] text-[color:var(--muted-foreground)] [&:hover]:bg-[var(--muted)] [&[aria-current='page']]:text-[color:var(--primary-hover)] [&[aria-current='page']]:bg-[var(--accent)] [&[aria-current='page']]:font-semibold"} href="/people" aria-current={pathname === "/people" ? "page" : undefined}>
                   {t("peopleCollectors")}</Link>
               </div>
             </div>
-          ) : label === "dashboard" || label === "settings" || label === "masters" ? (
-            <Link key={label} className="nav-item" href={`/${label}`}
+          ) : label === "books" ? (
+            <div key={label} className="nav-group">
+              <button type="button" className={"nav-item flex items-center gap-[15px] w-full min-h-[48px] [border:0] p-[10px_16px] rounded-[var(--radius-control)] text-start bg-[transparent] text-[color:var(--muted-foreground)] [&:hover]:bg-[var(--muted)] [&[aria-current='page']]:text-[color:var(--primary-hover)] [&[aria-current='page']]:bg-[var(--accent)] [&[aria-current='page']]:font-semibold nav-group-trigger [&_>_span]:flex-1 [&_>_span]:text-start [&[data-active='true']]:text-[color:var(--primary-hover)] [&[data-active='true']]:font-semibold [&[aria-expanded='true']_.nav-group-chevron]:[transform:rotate(180deg)]"} data-active={booksActive || undefined}
+                aria-expanded={booksExpanded} aria-controls={booksSubmenuId} onClick={() => setBooksExpanded((value) => !value)}>
+                <Icon size={21} strokeWidth={1.7} aria-hidden="true" /><span>{t("books")}</span>
+                <ChevronDown size={16} className={"nav-group-chevron [transition:transform_.15s_ease]"} aria-hidden="true" />
+              </button>
+              <div id={booksSubmenuId} className={"nav-submenu flex flex-col gap-[4px] my-[5px] ms-[25px] ps-[12px] [border-inline-start:1px_solid_var(--border)] [&[hidden]]:hidden [&_.nav-item]:min-h-[39px] [&_.nav-item]:text-[length:12px] [&_.nav-item]:px-[13px]"} hidden={!booksExpanded}>
+                <Link className={"nav-item flex items-center gap-[15px] w-full min-h-[48px] [border:0] p-[10px_16px] rounded-[var(--radius-control)] text-start bg-[transparent] text-[color:var(--muted-foreground)] [&:hover]:bg-[var(--muted)] [&[aria-current='page']]:text-[color:var(--primary-hover)] [&[aria-current='page']]:bg-[var(--accent)] [&[aria-current='page']]:font-semibold"} href="/books" aria-current={pathname === "/books" ? "page" : undefined}>{t("booksStock")}</Link>
+                <Link className={"nav-item flex items-center gap-[15px] w-full min-h-[48px] [border:0] p-[10px_16px] rounded-[var(--radius-control)] text-start bg-[transparent] text-[color:var(--muted-foreground)] [&:hover]:bg-[var(--muted)] [&[aria-current='page']]:text-[color:var(--primary-hover)] [&[aria-current='page']]:bg-[var(--accent)] [&[aria-current='page']]:font-semibold"} href="/books/assignments" aria-current={pathname === "/books/assignments" ? "page" : undefined}>{t("assignBooks")}</Link>
+                <Link className={"nav-item flex items-center gap-[15px] w-full min-h-[48px] [border:0] p-[10px_16px] rounded-[var(--radius-control)] text-start bg-[transparent] text-[color:var(--muted-foreground)] [&:hover]:bg-[var(--muted)] [&[aria-current='page']]:text-[color:var(--primary-hover)] [&[aria-current='page']]:bg-[var(--accent)] [&[aria-current='page']]:font-semibold"} href="/books/returns" aria-current={(pathname === "/books/returns" || pathname.startsWith("/receipt-entry")) ? "page" : undefined}>{t("returnsScreen")}</Link>
+                {account.role === "ADMIN" && <Link className={"nav-item flex items-center gap-[15px] w-full min-h-[48px] [border:0] p-[10px_16px] rounded-[var(--radius-control)] text-start bg-[transparent] text-[color:var(--muted-foreground)] [&:hover]:bg-[var(--muted)] [&[aria-current='page']]:text-[color:var(--primary-hover)] [&[aria-current='page']]:bg-[var(--accent)] [&[aria-current='page']]:font-semibold"} href="/books/leftovers" aria-current={pathname === "/books/leftovers" ? "page" : undefined}>{t("leftoversScreen")}</Link>}
+              </div>
+            </div>
+          ) : label === "dashboard" || label === "settings" || label === "masters" || label === "approvals" || label === "flags" ? (
+            <Link key={label} className={"nav-item flex items-center gap-[15px] w-full min-h-[48px] [border:0] p-[10px_16px] rounded-[var(--radius-control)] text-start bg-[transparent] text-[color:var(--muted-foreground)] [&:hover]:bg-[var(--muted)] [&[aria-current='page']]:text-[color:var(--primary-hover)] [&[aria-current='page']]:bg-[var(--accent)] [&[aria-current='page']]:font-semibold"} href={`/${label}`}
               aria-current={pathname === `/${label}` ? "page" : undefined}>
               <Icon size={21} strokeWidth={1.7} aria-hidden="true" />{t(label)}
             </Link>
           ) : (
-            <button key={label} type="button" className="nav-item" onClick={() => setActiveDialog(label)}>
+            <button key={label} type="button" className={"nav-item flex items-center gap-[15px] w-full min-h-[48px] [border:0] p-[10px_16px] rounded-[var(--radius-control)] text-start bg-[transparent] text-[color:var(--muted-foreground)] [&:hover]:bg-[var(--muted)] [&[aria-current='page']]:text-[color:var(--primary-hover)] [&[aria-current='page']]:bg-[var(--accent)] [&[aria-current='page']]:font-semibold"} onClick={() => setActiveDialog(label)}>
               <Icon size={21} strokeWidth={1.7} aria-hidden="true" />{t(label)}
             </button>
           ))}
         </nav>
-        {sampleData && <div className="sidebar-footer"><Badge>{t("sampleData")}</Badge></div>}
+        {sampleData && <div className={"sidebar-footer mt-auto p-[24px_12px_0]"}><Badge>{t("sampleData")}</Badge></div>}
       </aside>
 
-      <header className="topbar">
-        {headerTitle ? <span className="topbar-title">{t(headerTitle)}</span> : <div className="search-box">
+      <header className={"topbar min-h-[var(--topbar-height)] ms-[var(--sidebar-width)] [border-bottom:1px_solid_var(--border)] bg-[var(--card)] flex items-center justify-between gap-[22px] p-[14px_var(--space-page)]"}>
+        {headerTitle ? <span className={"topbar-title text-[length:16px] font-[650]"}>{t(headerTitle)}</span> : <div className={"search-box relative w-[min(52%,_580px)] [&_>_svg]:absolute [&_>_svg]:start-[16px] [&_>_svg]:top-[14px] [&_>_svg]:text-[color:var(--muted-foreground)] [&_>_svg]:pointer-events-none [&_.input]:ps-[45px] [&_.input]:bg-[var(--muted)] [&_.input]:[border-color:transparent]"}>
           <Search size={18} aria-hidden="true" />
           <Input
             type="search"
@@ -105,29 +121,29 @@ export function AppShell({ children, search, onSearchChange, account,
             onChange={(event) => onSearchChange(event.target.value)}
           />
         </div>}
-        <div className="topbar-actions">
+        <div className={"topbar-actions flex items-center gap-[18px]"}>
           <LanguageSwitch />
           <Button
             variant="ghost"
             size="icon"
-            className="notification-button"
+            className={"notification-button relative"}
             aria-label={t("notifications")}
             onClick={() => setActiveDialog("notifications")}
           >
-            <Bell size={23} aria-hidden="true" /><span className="notification-dot" />
+            <Bell size={23} aria-hidden="true" /><span className={"notification-dot absolute top-[8px] end-[9px] w-[7px] h-[7px] bg-[var(--primary)] [border:2px_solid_var(--card)] rounded-[50%]"} />
           </Button>
-          <button type="button" className="profile-button" aria-label={t("profile")}
+          <button type="button" className={"profile-button flex items-center gap-[11px] [border:0] bg-[transparent] p-0 text-start"} aria-label={t("profile")}
             onClick={() => setActiveDialog("account")}>
-            <span className="avatar profile-avatar">{initials}{account.hasPhoto && <img alt=""
+            <span className={"avatar inline-flex items-center justify-center shrink-0 w-[39px] h-[39px] rounded-[50%] bg-[var(--accent)] text-[color:var(--accent-foreground)] text-[length:12px] font-semibold profile-avatar relative overflow-hidden [&_img]:absolute [&_img]:inset-0 [&_img]:w-full [&_img]:h-full [&_img]:object-cover"}>{initials}{account.hasPhoto && <img alt=""
               src={`/api/v1/users/${account.id}/photo`} onError={(event) => { event.currentTarget.hidden = true; }} />}</span>
-            <span><span className="profile-name">{account.fullName}</span>
-              <span className="profile-role">{t(account.role === "ADMIN" ? "superAdmin" : "staff")}</span></span>
+            <span><span className={"profile-name block text-[length:13px] font-semibold"}>{account.fullName}</span>
+              <span className={"profile-role block text-[length:11px] text-[color:var(--muted-foreground)] mt-[4px]"}>{t(account.role === "ADMIN" ? "superAdmin" : "staff")}</span></span>
             <ChevronDown size={16} aria-hidden="true" />
           </button>
         </div>
       </header>
 
-      <main className="workspace">{children}</main>
+      <main className={"workspace ms-[var(--sidebar-width)] p-[26px_var(--space-page)]"}>{children}</main>
 
       <Dialog
         open={activeDialog !== null}
@@ -136,8 +152,8 @@ export function AppShell({ children, search, onSearchChange, account,
         description={t(isAccountDialog ? "accountDescription" : "moduleLater")}
       >
         {isAccountDialog && (
-          <div className="dialog-actions">
-            <p className="muted" dir="ltr">{account.email}</p>
+          <div className={"dialog-actions flex gap-[10px] flex-wrap mt-[24px]"}>
+            <p className={"muted text-[color:var(--muted-foreground)]"} dir="ltr">{account.email}</p>
             <LogoutButton />
           </div>
         )}

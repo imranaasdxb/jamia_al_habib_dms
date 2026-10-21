@@ -53,8 +53,8 @@ export function CollectorForm({ collector, admin, onBusyChange, onSaved }: {
   }
   const source = preview ?? (removePhoto || !collector?.hasPhoto ? null
     : `/api/v1/people/${collector.id}/photo?v=${encodeURIComponent(collector.updatedAt)}`);
-  return <form className="auth-form users-editor" noValidate onSubmit={handleSubmit(submit)}>
-    <fieldset className="people-form-fields" disabled={isSubmitting}>
+  return <form className={"auth-form flex flex-col gap-[19px] mt-[25px] users-editor gap-[21px] [&_.input]:min-h-[44px] [&_.input]:py-[11px] [&_.field-label]:text-[length:12px] [&_.field-label]:font-[550] [&_.field-hint]:text-[length:10px] [&_textarea]:[font:inherit] [&_textarea]:[resize:vertical]"} noValidate onSubmit={handleSubmit(submit)}>
+    <fieldset className={"people-form-fields grid gap-[21px] [border:0] p-0 m-0 min-w-0"} disabled={isSubmitting}>
       <ProfilePhotoEditor source={source} disabled={isSubmitting} onRemove={() => { setFile(null); setRemovePhoto(Boolean(collector?.hasPhoto)); }}
         onChoose={(selected) => {
           if (!selected.size || selected.size > 2 * 1024 * 1024 || !["image/jpeg", "image/png", "image/webp"].includes(selected.type)) {
@@ -62,44 +62,44 @@ export function CollectorForm({ collector, admin, onBusyChange, onSaved }: {
           }
           setError(null); setFile(selected); setRemovePhoto(false);
         }} />
-      <h3 className="users-form-section-title">{t("usersProfileDetails")}</h3>
-      <div className="users-form-grid">
+      <h3 className={"users-form-section-title text-[length:12px] font-[650] pt-[16px] [border-top:1px_solid_var(--border)]"}>{t("usersProfileDetails")}</h3>
+      <div className={"users-form-grid grid grid-cols-[repeat(2,_minmax(0,_1fr))] gap-[20px] max-[600px]:grid-cols-[1fr]"}>
         {field("fullName", true, "text", { maxLength: 100 })}{field("phone", true, "tel", { maxLength: 10 })}
         <AuthField id="collector-email" label={t("peopleOptionalEmail")} type="email" maxLength={254}
           hint={t("peopleNoLogin")} error={errors.email ? t("errorEmail") : undefined} {...register("email")} />
         {field("age", true, "number", { min: 18, max: 80 })}
-        <div><label className="field-label" htmlFor="collector-gender">{t("usersGender")} *</label>
-          <select id="collector-gender" className="input" {...register("gender")}>
+        <div><label className={"field-label block text-[length:12px] font-semibold mb-[8px]"} htmlFor="collector-gender">{t("usersGender")} *</label>
+          <select id="collector-gender" className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} {...register("gender")}>
             <option value="MALE">{t("usersMale")}</option><option value="FEMALE">{t("usersFemale")}</option><option value="OTHER">{t("usersOther")}</option>
           </select></div>
-        <div><label className="field-label" htmlFor="collector-status">{t("status")} *</label>
-          <select id="collector-status" className="input" {...register("status")}>
+        <div><label className={"field-label block text-[length:12px] font-semibold mb-[8px]"} htmlFor="collector-status">{t("status")} *</label>
+          <select id="collector-status" className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} {...register("status")}>
             <option value="ACTIVE">{t("usersActive")}</option><option value="INACTIVE">{t("usersInactive")}</option><option value="BLOCKED">{t("usersBlocked")}</option>
           </select></div>
         {field("fatherName", false, "text", { maxLength: 100 })}
         <div><AuthField id="collector-whatsapp" label={t("peopleWhatsapp")} type="tel" maxLength={10} readOnly={samePhone}
           error={errors.whatsapp ? t("usersInvalidPhone") : undefined} {...register("whatsapp")} />
-          <label className="people-checkbox"><input type="checkbox" checked={samePhone} onChange={(event) => setSamePhone(event.target.checked)} />{t("peopleSamePhone")}</label></div>
+          <label className={"people-checkbox flex items-center gap-[8px] mt-[9px] text-[length:11px] text-[color:var(--muted-foreground)] [&_input]:[accent-color:var(--primary)]"}><input type="checkbox" checked={samePhone} onChange={(event) => setSamePhone(event.target.checked)} />{t("peopleSamePhone")}</label></div>
         {field("commission", false, "number", { min: 0, max: 100, step: "0.01" })}
-        <div><label className="field-label" htmlFor="collector-language">{t("usersLanguage")}</label>
-          <select id="collector-language" className="input" {...register("language")}><option value="en">English</option><option value="ur">اردو</option></select></div>
-        <div className="people-full-width"><AuthField id="collector-proof" label={t("peopleIdProof")} maxLength={160}
+        <div><label className={"field-label block text-[length:12px] font-semibold mb-[8px]"} htmlFor="collector-language">{t("usersLanguage")}</label>
+          <select id="collector-language" className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} {...register("language")}><option value="en">English</option><option value="ur">اردو</option></select></div>
+        <div className={"people-full-width col-[1_/_-1]"}><AuthField id="collector-proof" label={t("peopleIdProof")} maxLength={160}
           hint={t("peopleIdHint")} error={errors.idProofName ? t("peopleInvalidField") : undefined} {...register("idProofName")} />
-          <input className="people-proof-file" type="file" aria-label={t("peopleIdProof")} onChange={(event) => {
+          <input className={"people-proof-file text-[length:11px] text-[color:var(--muted-foreground)] mt-[10px]"} type="file" aria-label={t("peopleIdProof")} onChange={(event) => {
             const selected = event.target.files?.[0]; if (selected) setValue("idProofName", selected.name, { shouldDirty: true, shouldValidate: true });
             event.target.value = "";
           }} /></div>
       </div>
-      <h3 className="users-form-section-title">{t("usersAddress")}</h3>
-      <div className="users-form-grid">{field("village", true)}{field("postOffice", true)}{field("block")}
+      <h3 className={"users-form-section-title text-[length:12px] font-[650] pt-[16px] [border-top:1px_solid_var(--border)]"}>{t("usersAddress")}</h3>
+      <div className={"users-form-grid grid grid-cols-[repeat(2,_minmax(0,_1fr))] gap-[20px] max-[600px]:grid-cols-[1fr]"}>{field("village", true)}{field("postOffice", true)}{field("block")}
         {field("district", true)}{field("state", true)}{field("pin", true, "text", { maxLength: 6 })}</div>
-      <div><label className="field-label" htmlFor="collector-remarks">{t("usersRemarks")}</label>
-        <textarea id="collector-remarks" className="input" rows={3} maxLength={1000} {...register("remarks")} /></div>
+      <div><label className={"field-label block text-[length:12px] font-semibold mb-[8px]"} htmlFor="collector-remarks">{t("usersRemarks")}</label>
+        <textarea id="collector-remarks" className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} rows={3} maxLength={1000} {...register("remarks")} /></div>
       {collector && <AuthField id="collector-reason" label={t("settingsReason")} required value={reason} maxLength={500}
         hint={t("peopleReasonHint")} onChange={(event) => setReason(event.target.value)} />}
     </fieldset>
-    {error && <p className="form-message auth-error" role="alert">{t(error)}</p>}
-    <div className="users-form-footer"><Button type="submit" loading={isSubmitting}
+    {error && <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8] auth-error bg-[var(--danger-soft)] text-[color:var(--danger)]"} role="alert">{t(error)}</p>}
+    <div className={"users-form-footer flex justify-end sticky bottom-[-30px] z-[2] py-[18px] bg-[var(--card)] [border-top:1px_solid_var(--border)] mb-[-20px]"}><Button type="submit" loading={isSubmitting}
       disabled={!isValid || Boolean(collector && ((!isDirty && !file && !removePhoto) || reason.trim().length < 3))}>
       {t(isSubmitting ? "usersSaving" : collector && !admin ? "peopleRequestEdit" : "usersSave")}</Button></div>
   </form>;
