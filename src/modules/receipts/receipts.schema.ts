@@ -1,14 +1,16 @@
 import { z } from "zod";
 import { returnRowSchema } from "@/modules/books/returns.schema";
 import { VALIDATION_PATTERNS } from "@/lib/validation/regex";
+import { RECEIPT_REASON_CODES } from "@/modules/receipts/receipt-options";
 
 const id = z.union([z.literal(""), z.uuid()]);
 const day = z.union([z.literal(""), z.iso.date()]);
 const money = z.number().int().min(0).max(999_999_999_999).nullable();
 export const receiptValuesSchema = z.strictObject({
-  status: z.enum(["VALID", "CANCELLED", "TORN", "LOST", "BLANK"]), date: day, reasonId: id,
+  status: z.enum(["VALID", "CANCELLED", "TORN", "LOST", "BLANK"]), date: day, reasonId: z.union([id, z.enum(RECEIPT_REASON_CODES)]),
   anonymous: z.boolean(), donorName: z.string().trim().max(120), parentage: z.enum(["S/O", "D/O", "W/O"]), parentName: z.string().trim().max(120),
   phone: z.string().regex(/^\d{0,10}$/), email: z.union([z.literal(""), z.email().max(254)]), marhoomName: z.string().trim().max(120),
+  pan: z.string().trim().toUpperCase().regex(/^(?:[A-Z]{5}[0-9]{4}[A-Z])?$/).default(""),
   village: z.string().trim().max(160), postOffice: z.string().trim().max(120), block: z.string().trim().max(120),
   district: z.string().trim().max(120), state: z.string().trim().max(120), pin: z.string().regex(/^\d{0,6}$/),
   amountPaise: money, amountWords: z.string().trim().max(500), paymentMode: z.enum(["CASH", "DIGITAL", "CHEQUE"]),
@@ -32,14 +34,19 @@ export const receiptFlagSchema = z.object({ id: z.uuid(), returnId: z.uuid(), bo
 export const receiptWorkflowSchema = z.object({ data: z.object({ requests: z.array(receiptEditSchema), issues: z.array(receiptIssueSchema), flags: z.array(receiptFlagSchema) }) });
 export const receiptTotalsSchema = z.object({ saved: z.number().int(), valid: z.number().int(), total: z.number().int(), cash: z.number().int(), digital: z.number().int(), cheque: z.number().int() });
 export const receiptBookSchema = z.object({ header: receiptHeaderSchema, totals: receiptTotalsSchema,
-  checkedCount: z.number().int(), requests: z.array(receiptEditSchema), issues: z.array(receiptIssueSchema),
+  checkedCount: z.number().int(), lastCheckedNumber: z.number().int().positive().nullable().default(null), requests: z.array(receiptEditSchema), issues: z.array(receiptIssueSchema),
   rows: z.array(z.object({ number: z.number().int(), record: receiptRecordSchema.nullable() })), page: z.number().int(), pageSize: z.number().int(), total: z.number().int() });
 export const receiptBookResponseSchema = z.object({ data: receiptBookSchema });
+const donationOption = z.object({ id: z.uuid(), nameEn: z.string(), nameUr: z.string() });
+export const receiptDonationOptionsSchema = z.object({ data: z.object({ categories: z.array(donationOption.extend({
+  heads: z.array(donationOption.extend({ needsDetail: z.boolean() })),
+})) }) });
+export type ReceiptDonationCategory = z.infer<typeof receiptDonationOptionsSchema>["data"]["categories"][number];
 export const receiptRecordResponseSchema = z.object({ data: receiptRecordSchema });
 export const receiptQueueSchema = z.object({ data: z.array(receiptHeaderSchema), meta: z.object({ total: z.number(), page: z.number(), pageSize: z.number() }) });
 export const receiptQuerySchema = z.object({ search: z.string().trim().max(100).default(""), status: z.enum(["PENDING", "FINALIZED", "ALL"]).default("PENDING"), page: z.coerce.number().int().min(1).max(100000).default(1) });
 export const receiptActionSchema = z.discriminatedUnion("action", [
-  z.strictObject({ action: z.literal("SAVE"), number: z.number().int().positive().max(2147483647), version: z.number().int().positive().nullable(), values: receiptValuesSchema,
+  z.strictObject({ action: z.literal("SAVE"), number: z.number().int().positive().max(2147483647), version: z.number().int().positive().nullable(), values: receiptValuesSchema.refine((value) => value.heads.length <= 1),
     checked: z.boolean().default(false),
     page: z.number().int().positive().max(100000000) }),
   z.strictObject({ action: z.literal("FINALIZE"), version: z.number().int().min(0), page: z.number().int().positive().max(100000000) }),
@@ -55,11 +62,12 @@ export type ReceiptValues = z.infer<typeof receiptValuesSchema>;
 export type ReceiptRecord = z.infer<typeof receiptRecordSchema>;
 export type ReceiptHeader = z.infer<typeof receiptHeaderSchema>;
 export type ReceiptBook = z.infer<typeof receiptBookSchema>;
+export type ReceiptTotals = z.infer<typeof receiptTotalsSchema>;
 export type ReceiptAction = z.infer<typeof receiptActionSchema>;
 export type ReceiptQuery = z.infer<typeof receiptQuerySchema>;
 export type ReceiptQueue = { rows: ReceiptHeader[]; total: number; page: number; pageSize: number };
 export const donorSuggestionSchema = receiptValuesSchema.pick({ donorName: true, parentage: true, parentName: true, phone: true, email: true,
-  village: true, postOffice: true, block: true, district: true, state: true, pin: true });
+  village: true, postOffice: true, block: true, district: true, state: true, pin: true, pan: true });
 export const donorSuggestionsSchema = z.object({ data: z.array(donorSuggestionSchema) });
 export type DonorSuggestion = z.infer<typeof donorSuggestionSchema>;
 
@@ -67,9 +75,9 @@ export function receiptComplete(value: ReceiptValues, header: ReceiptHeader) {
   if (!value.date || value.date < header.assignmentDate || value.date > header.returned.returnDate) return false;
   if (value.status !== "VALID") return value.amountPaise === 0 && Boolean(value.reasonId) && value.heads.length === 0;
   if (value.amountPaise === null || value.amountPaise <= 0 || !value.amountWords || value.receiverName.length < 2
-    || (!value.anonymous && (value.donorName.length < 2 || value.parentName.length < 2 || !VALIDATION_PATTERNS.indianMobile.test(value.phone)))
-    || (value.phone !== "" && !VALIDATION_PATTERNS.indianMobile.test(value.phone)) || value.village.length < 2 || value.postOffice.length < 2
-    || value.district.length < 2 || value.state.length < 2 || !/^\d{6}$/.test(value.pin)) return false;
+    || (!value.anonymous && (value.donorName.length < 2 || !VALIDATION_PATTERNS.indianMobile.test(value.phone)))
+    || (value.phone !== "" && !VALIDATION_PATTERNS.indianMobile.test(value.phone)) || value.village.length < 2
+    || (value.pin !== "" && !/^\d{6}$/.test(value.pin)) || !/^(?:[A-Z]{5}[0-9]{4}[A-Z])?$/.test(value.pan)) return false;
   if (header.bookType === "TOKEN" && value.amountPaise !== header.tokenValuePaise) return false;
   if (!value.heads.length || value.heads.some((row) => !row.categoryId || !row.headId || row.amountPaise === null || row.amountPaise <= 0)
     || value.heads.reduce((sum, row) => sum + (row.amountPaise ?? 0), 0) !== value.amountPaise) return false;
@@ -81,9 +89,22 @@ export function newReceipt(number: number, header: ReceiptHeader): ReceiptValues
   const exception = header.returned.exceptions.find((row) => row.receiptNumber === number);
   const amount = exception ? 0 : header.tokenValuePaise;
   return { status: exception?.status ?? "VALID", date: header.returned.returnDate, reasonId: exception?.reasonId ?? "", anonymous: false,
-    donorName: "", parentage: "S/O", parentName: "", phone: "", email: "", marhoomName: "", village: "", postOffice: "", block: "", district: "", state: "Odisha", pin: "",
+    donorName: "", parentage: "S/O", parentName: "", phone: "", email: "", marhoomName: "", pan: "", village: "", postOffice: "", block: "", district: "", state: "Odisha", pin: "",
     amountPaise: amount, amountWords: amount === null ? "" : amountInWords(amount), paymentMode: "CASH", upiAppId: "", reference: "", transactionDate: "", chequeNumber: "", bankId: "", branch: "", chequeDate: "",
     heads: exception ? [] : [{ categoryId: "", headId: "", purpose: "", amountPaise: amount }], receiverName: header.returned.collectorName, responsibility: "", donorSigned: false, receiverSigned: false, remarks: "" };
+}
+export function receiptRemaining(header: ReceiptHeader, totals: ReceiptTotals, previous: ReceiptValues | undefined, mode: ReceiptValues["paymentMode"] | "TOTAL") {
+  const oldAmount = previous?.status === "VALID" && (mode === "TOTAL" || previous.paymentMode === mode) ? previous.amountPaise ?? 0 : 0;
+  const expected = mode === "CASH" ? header.returned.cashPaise : mode === "DIGITAL" ? header.returned.digitalPaise : header.returned.totalPaise;
+  const entered = mode === "CASH" ? totals.cash : mode === "DIGITAL" ? totals.digital : totals.total;
+  return Math.max(0, expected - entered + oldAmount);
+}
+export function receiptLimitError(value: ReceiptValues, header: ReceiptHeader, totals: ReceiptTotals, previous?: ReceiptValues) {
+  if (value.status !== "VALID" || value.amountPaise === null) return null;
+  if (value.paymentMode === "CASH" && value.amountPaise > receiptRemaining(header, totals, previous, "CASH")) return "receiptCashLimit" as const;
+  if (value.paymentMode === "DIGITAL" && value.amountPaise > receiptRemaining(header, totals, previous, "DIGITAL")) return "receiptDigitalLimit" as const;
+  if (value.amountPaise > receiptRemaining(header, totals, previous, "TOTAL")) return "receiptTotalLimit" as const;
+  return null;
 }
 const small = ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
 function words(value: number): string {

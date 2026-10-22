@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { CollectorForm } from "@/modules/people/components/collector-form";
 import { CollectorRequests } from "@/modules/people/components/collector-requests";
 import { collectorLabels, peopleError, peopleRequest } from "@/modules/people/people.client";
-import { collectorsResponseSchema } from "@/modules/people/people.schema";
+import { collectorEligibilityResponseSchema, collectorsResponseSchema } from "@/modules/people/people.schema";
 import type { Account } from "@/modules/auth/auth.types";
 import type { CollectorPage, CollectorQuery, CollectorRow, CollectorValues } from "@/modules/people/people.schema";
 import type { MessageKey } from "@/lib/i18n/messages";
@@ -29,8 +29,33 @@ function reconcile(previous: CollectorPage | undefined, next: CollectorPage): Co
     return cached && JSON.stringify(cached) === JSON.stringify(collector) ? cached : collector;
   }) };
 }
-const CollectorCard = memo(function CollectorCard({ collector, admin, onView, onEdit }: {
+function CollectorEligibility({ collector, admin, onChange }: {
+  collector: CollectorRow; admin: boolean; onChange: (collector: CollectorRow) => Promise<void>;
+}) {
+  const { t } = useLanguage();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<MessageKey | null>(null);
+  async function toggle() {
+    if (!admin || saving) return;
+    setSaving(true); setError(null);
+    try { await onChange(collector); }
+    catch (failure) { setError(peopleError(failure)); }
+    finally { setSaving(false); }
+  }
+  return <div className="mt-3 w-full rounded-xl border border-border bg-muted/40 p-3">
+    <label className="flex items-center gap-2.5 text-xs font-medium" title={t("peopleLeftoverHelp")}>
+      <input type="checkbox" role="switch" className="size-4 shrink-0 accent-primary disabled:cursor-not-allowed" checked={collector.leftoverEligible}
+        disabled={!admin || saving} aria-busy={saving || undefined} onChange={() => { void toggle(); }} />
+      <span className="flex-1">{t("peopleLeftoverEligible")}</span>
+      {saving && <span className="size-3.5 shrink-0 animate-spin rounded-full border-2 border-primary border-t-transparent" role="status" aria-label={t("usersSaving")} />}
+    </label>
+    {error && <p className="mt-2 text-[11px] text-[var(--danger)]" role="alert">{t(error)}</p>}
+  </div>;
+}
+
+const CollectorCard = memo(function CollectorCard({ collector, admin, onView, onEdit, onEligibilityChange }: {
   collector: CollectorRow; admin: boolean; onView: (collector: CollectorRow) => void; onEdit: (collector: CollectorRow) => void;
+  onEligibilityChange: (collector: CollectorRow) => Promise<void>;
 }) {
   const { t } = useLanguage();
   return <Card className={"user-profile-card overflow-hidden flex flex-col"}><div className={"user-card-cover h-[82px] p-[14px_16px] flex items-start justify-between [background:linear-gradient(125deg,_var(--primary-soft),_var(--accent))]"}>
@@ -39,6 +64,7 @@ const CollectorCard = memo(function CollectorCard({ collector, admin, onView, on
     <div className={"user-card-body flex flex-1 flex-col items-center p-[0_20px_20px] [&_h3]:mt-[12px] [&_h3]:text-[length:16px] [&_h3]:font-[650] [&_h3]:text-center [&_h3]:[overflow-wrap:anywhere]"}><span className={"user-card-avatar relative inline-flex items-center justify-center w-[88px] h-[88px] mt-[-43px] shrink-0 [border:5px_solid_var(--card)] rounded-[50%] bg-[var(--accent)] text-[color:var(--primary)] overflow-hidden [&_img]:absolute [&_img]:inset-0 [&_img]:w-full [&_img]:h-full [&_img]:object-cover"} aria-hidden="true"><UserRound size={35} />
       {collector.hasPhoto && <img alt="" loading="lazy" decoding="async" src={photoUrl(collector)} onError={(event) => { event.currentTarget.hidden = true; }} />}</span>
       <h3>{collector.fullName}</h3><span className={"user-card-role inline-flex items-center gap-[5px] mt-[7px] text-[color:var(--primary)] text-[length:11px]"}>{t("peopleCollector")}</span>
+      <CollectorEligibility collector={collector} admin={admin} onChange={onEligibilityChange} />
       <div className={"user-card-contact w-full py-[19px] mt-[16px] [border-block:1px_solid_var(--border)] [&_p]:flex [&_p]:items-center [&_p]:gap-[9px] [&_p]:text-[length:12px] [&_p]:text-[color:var(--muted-foreground)] [&_p_+_p]:mt-[12px] [&_svg]:shrink-0 [&_p_span]:min-w-0 [&_p_span]:overflow-hidden [&_p_span]:text-ellipsis [&_p_span]:whitespace-nowrap"}><p><span dir="ltr">{collector.phone}</span></p>
         <p><MapPin size={15} aria-hidden="true" /><span>{collector.village}, {collector.district}</span></p>
         {collector.email && <p><Mail size={15} aria-hidden="true" /><span dir="ltr">{collector.email}</span></p>}</div>
@@ -74,7 +100,23 @@ export function PeopleScreen({ account }: { account: Account }) {
   const loading = query.loading || query.stale;
   const view = useCallback((collector: CollectorRow) => setViewing(collector), []);
   const edit = useCallback((collector: CollectorRow) => { setEditing(collector); setViewing(null); setOpen(true); }, []);
-  const invalidate = useCallback(() => { cache.invalidate(`${scope}query:`); }, [cache, scope]);
+  const invalidate = useCallback(() => {
+    cache.invalidate(`${scope}query:`); cache.invalidate(`${scope}eligible:query:`);
+    cache.invalidate(`${account.id}:leftovers:options:`);
+  }, [cache, scope, account.id]);
+  const changeEligibility = useCallback(async (collector: CollectorRow) => {
+    if (!admin) throw new Error("ACCESS_DENIED");
+    const updated = collectorEligibilityResponseSchema.parse(await peopleRequest(`/api/v1/people/${collector.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ leftoverEligible: !collector.leftoverEligible, version: collector.updatedAt }),
+    })).data;
+    cache.updateQueries<CollectorPage>(`${scope}query:`, (previous) => ({ ...previous,
+      collectors: previous.collectors.map((row) => row.id === updated.id ? updated : row) }));
+    cache.invalidate(`${scope}eligible:query:`);
+    cache.invalidate(`${account.id}:leftovers:options:`);
+    setViewing((previous) => previous?.id === updated.id ? updated : previous);
+    setNotice("peopleEligibilitySaved");
+  }, [admin, cache, scope, account.id]);
 
   function saved(collector: CollectorRow, requested: boolean) {
     if (requested) {
@@ -130,7 +172,7 @@ export function PeopleScreen({ account }: { account: Account }) {
         <span className={"muted text-[color:var(--muted-foreground)]"} role="status">{loading && t(data ? "usersUpdating" : "working")}</span></div>
       {query.error != null && <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8] auth-error bg-[var(--danger-soft)] text-[color:var(--danger)]"} role="alert">{t(peopleError(query.error))}</p>}
       <section className={"users-card-grid grid grid-cols-[repeat(3,_minmax(0,_1fr))] gap-[var(--space-gap)] min-[1800px]:grid-cols-[repeat(4,_minmax(0,_1fr))] max-[1000px]:grid-cols-[repeat(2,_minmax(0,_1fr))]"} aria-label={t("peopleCollectors")} aria-busy={loading}>
-        {data?.collectors.map((collector) => <CollectorCard key={collector.id} collector={collector} admin={admin} onView={view} onEdit={edit} />)}
+        {data?.collectors.map((collector) => <CollectorCard key={collector.id} collector={collector} admin={admin} onView={view} onEdit={edit} onEligibilityChange={changeEligibility} />)}
         {!data && loading && Array.from({ length: 6 }, (_, index) => <Card key={index} className={"users-card-skeleton min-h-[330px] overflow-hidden pb-[24px] [&_span]:block [&_span]:bg-[var(--muted)] [&_span]:[animation:users-pulse_1.4s_ease-in-out_infinite] [&_span:first-child]:h-[82px] [&_span:first-child]:bg-[var(--accent)] [&_span:nth-child(2)]:h-[84px] [&_span:nth-child(2)]:w-[84px] [&_span:nth-child(2)]:rounded-[50%] [&_span:nth-child(2)]:m-[-40px_auto_30px] [&_span:nth-child(2)]:[border:5px_solid_var(--card)] [&_span:nth-child(2)]:relative [&_span:last-child]:h-[12px] [&_span:last-child]:w-[65%] [&_span:last-child]:rounded-[var(--radius-control)] [&_span:last-child]:m-auto"} aria-hidden="true"><span /><span /><span /></Card>)}
       </section>
       {!loading && data?.collectors.length === 0 && <Card className={"users-empty p-[44px_20px] text-center text-[color:var(--muted-foreground)]"}>{t("peopleEmpty")}</Card>}
@@ -147,6 +189,7 @@ export function PeopleScreen({ account }: { account: Account }) {
       {viewing && <div className={"users-profile-details flex flex-col items-center gap-[12px] pt-[24px] [&_.user-card-avatar]:mt-0 [&_dl]:w-full [&_dl]:my-[12px] [&_dl_>_div]:grid [&_dl_>_div]:grid-cols-[120px_1fr] [&_dl_>_div]:gap-[15px] [&_dl_>_div]:[border-top:1px_solid_var(--border)] [&_dl_>_div]:py-[13px] [&_dt]:text-[color:var(--muted-foreground)] [&_dt]:text-[length:12px] [&_dd]:m-0 [&_dd]:[overflow-wrap:anywhere] [&_dd]:whitespace-pre-wrap [&_dd]:text-[length:12px]"}><span className={"user-card-avatar relative inline-flex items-center justify-center w-[88px] h-[88px] mt-[-43px] shrink-0 [border:5px_solid_var(--card)] rounded-[50%] bg-[var(--accent)] text-[color:var(--primary)] overflow-hidden [&_img]:absolute [&_img]:inset-0 [&_img]:w-full [&_img]:h-full [&_img]:object-cover"}><UserRound size={36} />
         {viewing.hasPhoto && <img alt={viewing.fullName} src={photoUrl(viewing)} />}</span>
         <h3>{viewing.fullName}</h3><p className={"muted text-[color:var(--muted-foreground)]"} dir="ltr">{viewing.code}</p>
+        <CollectorEligibility key={viewing.id} collector={viewing} admin={admin} onChange={changeEligibility} />
         <dl>{(Object.keys(collectorLabels) as (keyof CollectorValues)[]).map((key) => <div key={key}>
           <dt>{t(collectorLabels[key])}</dt><dd dir={key === "phone" || key === "email" || key === "whatsapp" || key === "pin" ? "ltr" : undefined}>{profileValue(key, viewing)}</dd></div>)}</dl>
         <div className={"people-book-placeholder w-full p-[20px] bg-[var(--muted)] rounded-[var(--radius)] grid gap-[12px] [&_.muted]:text-[length:12px] [&_.muted]:leading-[1.8] [&_.button]:[justify-self:start]"}><h3>{t("peopleAssignBooks")}</h3><p className={"muted text-[color:var(--muted-foreground)]"}>{t("assignProfileHelp")}</p>

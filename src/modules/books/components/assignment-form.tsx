@@ -40,8 +40,8 @@ export function AssignmentForm({ account, initialId, initialCode, leftovers, onB
       source: leftovers ? "LEFTOVER" : "NEW", leftoverIds: leftovers?.filter((row) => selected.some((book) => book.id === row.book.id)).map((row) => row.id) ?? [],
       areaIds: areas.map((row) => row.id), bookIds: selected.map((row) => row.id), remarks });
     if (!parsed.success || date > indiaToday()) { setError("assignInvalid"); return; }
+    if (leftovers && !collector?.leftoverEligible) { setError("leftoversFundraiserIneligible"); return; }
     const activeLeftovers = leftovers?.filter((row) => selected.some((book) => book.id === row.book.id));
-    if (activeLeftovers?.some((row) => row.returnedBy === collector?.id)) { setError("leftoversSameFundraiser"); return; }
     if (activeLeftovers?.some((row) => date < row.returnDate)) { setError("leftoversDateInvalid"); return; }
     const serialized = JSON.stringify(parsed.data);
     if (!operation.current || operation.current.values !== serialized) operation.current = { id: crypto.randomUUID(), values: serialized };
@@ -52,8 +52,10 @@ export function AssignmentForm({ account, initialId, initialCode, leftovers, onB
       onSaved({ assignment: result.data.assignment, books: result.data.books }, result.data.replayed);
     } catch (failure) {
       setError(booksError(failure));
-      if (failure instanceof Error && ["ASSIGNMENT_CHANGED", "ASSIGNMENT_FUNDRAISER", "ASSIGNMENT_AREAS", "LEFTOVER_CHANGED"].includes(failure.message)) {
+      if (failure instanceof Error && ["ASSIGNMENT_CHANGED", "ASSIGNMENT_FUNDRAISER", "ASSIGNMENT_AREAS", "LEFTOVER_CHANGED", "LEFTOVER_FUNDRAISER_INELIGIBLE"].includes(failure.message)) {
         cache.invalidate(`${account.id}:assignments:stock:`); cache.invalidate(`${account.id}:people:query:`);
+        cache.invalidate(`${account.id}:people:eligible:query:`);
+        if (failure.message === "LEFTOVER_FUNDRAISER_INELIGIBLE") setCollector(null);
         if (leftovers) cache.invalidate(`${account.id}:leftovers:`);
         cache.invalidate(`${account.id}:masters:options:AREA:`);
       }
@@ -68,7 +70,7 @@ export function AssignmentForm({ account, initialId, initialCode, leftovers, onB
       <div className={"field-hint block mt-[8px] text-[length:11px] text-[color:var(--muted-foreground)] leading-[1.7] assignment-default-hint self-center"}>{t("assignDefaultReturn")} {months} {t("assignMonths")}</div></div>
     {defaults.error != null && <p className={"field-error block mt-[7px] text-[length:11px] text-[color:var(--danger)]"} role="alert">{t(booksError(defaults.error))}</p>}
     <div className={"books-form-grid grid grid-cols-[repeat(2,_minmax(0,_1fr))] gap-[22px] max-[700px]:grid-cols-[1fr]"}><AssignmentFundraiser accountId={account.id} value={collector} initialId={initialId} initialCode={initialCode} onChange={setCollector}
-      excludedIds={leftovers?.filter((row) => selected.some((book) => book.id === row.book.id)).map((row) => row.returnedBy)} />
+      leftoverOnly={Boolean(leftovers)} />
       <AssignmentAreas accountId={account.id} value={areas} onChange={setAreas} /></div>
     <div><h3>{t("assignSelectBooks")} · {selected.length}/150</h3><p className={"field-hint block mt-[8px] text-[length:11px] text-[color:var(--muted-foreground)] leading-[1.7]"}>{t(leftovers ? "leftoversFormHelp" : "assignNewOnly")}</p>
       {!leftovers && <AvailableStock key={date} accountId={account.id} date={date} selected={selected} onSelect={(row) => {

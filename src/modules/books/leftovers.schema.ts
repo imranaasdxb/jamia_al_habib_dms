@@ -10,3 +10,20 @@ export const leftoversResponseSchema = z.object({ data: z.array(leftoverRowSchem
 export type LeftoverRow = z.infer<typeof leftoverRowSchema>;
 export type LeftoversQuery = z.infer<typeof leftoversQuerySchema>;
 export type LeftoversPage = { rows: LeftoverRow[]; total: number; page: number; pageSize: number };
+
+export const leftoverOptionsQuerySchema = z.object({
+  search: z.string().trim().max(100).default(""), areaSearch: z.string().trim().max(100).default(""),
+  page: z.coerce.number().int().min(1).max(100000).default(1), areaPage: z.coerce.number().int().min(1).max(100000).default(1),
+});
+export const leftoverFundraiserSchema = z.object({ id: z.uuid(), fullName: z.string(), code: z.string(), phone: z.string(),
+  village: z.string(), district: z.string(), hasPhoto: z.boolean(), photoVersion: z.string(), photoUrl: z.string().nullable().default(null) });
+export const leftoverOptionsDataSchema = z.object({
+  fundraisers: z.array(leftoverFundraiserSchema),
+  areas: z.array(z.object({ id: z.uuid(), nameEn: z.string(), nameUr: z.string() })),
+  returnMonths: z.number().int().min(1).max(60),
+});
+export const leftoverOptionsResponseSchema = z.object({ data: leftoverOptionsDataSchema.extend({
+  fundraiserHasMore: z.boolean(), areaHasMore: z.boolean(),
+}) });
+export type LeftoverFundraiser = z.infer<typeof leftoverFundraiserSchema>;
+export type LeftoverOptionsQuery = z.infer<typeof leftoverOptionsQuerySchema>;

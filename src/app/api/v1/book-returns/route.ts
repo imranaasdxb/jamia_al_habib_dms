@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { AuthFailure } from "@/modules/auth/auth.types";
 import { requireSameOrigin } from "@/modules/auth/auth.service";
-import { listBookReturns, listOpenReturns, ReturnFailure, returnDatabaseFailure, saveBookReturn } from "@/modules/books/returns.repository";
-import { returnQuerySchema, returnSubmissionSchema } from "@/modules/books/returns.schema";
+import { listBookReturns, listOpenReturns, markAssignedBookLost, ReturnFailure, returnDatabaseFailure, saveBookReturn } from "@/modules/books/returns.repository";
+import { bookLossSubmissionSchema, returnQuerySchema, returnSubmissionSchema } from "@/modules/books/returns.schema";
 import { boundedBody, userResponse } from "@/modules/users/users.http";
 import type { NextRequest } from "next/server";
 
@@ -27,6 +27,8 @@ export async function POST(request: NextRequest) {
     const bytes = await boundedBody(request, 131072);
     let payload: unknown;
     try { payload = JSON.parse(new TextDecoder().decode(bytes)); } catch { throw new AuthFailure("INVALID_INPUT", 400); }
+    const loss = bookLossSubmissionSchema.safeParse(payload);
+    if (loss.success) return userResponse(await markAssignedBookLost(loss.data));
     const parsed = returnSubmissionSchema.safeParse(payload);
     if (!parsed.success) throw new AuthFailure("RETURN_INVALID", 400);
     return userResponse(await saveBookReturn(parsed.data), 201);

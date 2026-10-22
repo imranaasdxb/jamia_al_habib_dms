@@ -17,6 +17,9 @@ export function receiptError(error: unknown): MessageKey {
   const code = error instanceof Error ? error.message : "";
   const labels: Record<string, MessageKey> = { ACCESS_DENIED: "authDenied", SESSION_EXPIRED: "authExpired", INVALID_INPUT: "receiptInvalid", RECEIPT_INVALID: "receiptInvalid",
     RECEIPT_DUPLICATE: "receiptDuplicate", RECEIPT_STALE: "receiptStale", RECEIPT_LOCKED: "receiptLocked", RECEIPT_INCOMPLETE: "receiptIncomplete",
+    RECEIPT_CANCELLATION_NOT_ALLOWED: "receiptCancelSavedBlocked",
+    RECEIPT_CASH_LIMIT: "receiptCashLimit", RECEIPT_DIGITAL_LIMIT: "receiptDigitalLimit", RECEIPT_TOTAL_LIMIT: "receiptTotalLimit",
+    RECEIPT_OPTIONS_UNAVAILABLE: "receiptOptionsUnavailable", AUTH_UNAVAILABLE: "receiptOptionsUnavailable",
     RECEIPT_RANGE: "receiptRangeError", RECEIPT_BOOK_NOT_FOUND: "assignNotFound", INVALID_PHOTO: "receiptPhotoInvalid",
     STORAGE_NOT_CONFIGURED: "receiptPhotoFailed", STORAGE_UNAVAILABLE: "receiptPhotoFailed",
     RECEIPT_SETUP_REQUIRED: "receiptSetupRequired", RECEIPT_DATABASE_BUSY: "receiptDatabaseBusy", RECEIPT_SETUP_PERMISSIONS: "receiptSetupPermissions" };

@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { receiptError, receiptRequest } from "@/modules/receipts/receipts.client";
 import { donorSuggestionsSchema } from "@/modules/receipts/receipts.schema";
-import { mastersResponseSchema } from "@/modules/masters/masters.schema";
+import { masterOptionsResponseSchema } from "@/modules/masters/masters.schema";
 import type { DonorSuggestion } from "@/modules/receipts/receipts.schema";
 import type { MessageKey } from "@/lib/i18n/messages";
 
@@ -28,7 +28,7 @@ export function ReceiptSuggestionField({ accountId, kind, level = "", value, lab
 }) {
   const { t, language } = useLanguage(); const id = useId();
   const params = new URLSearchParams({ kind, level, search: value.trim(), page: "1" }).toString();
-  const load = useCallback(async () => mastersResponseSchema.parse(await receiptRequest(`/api/v1/masters/options?${params}`)), [params]);
+  const load = useCallback(async () => masterOptionsResponseSchema.parse(await receiptRequest(`/api/v1/masters/options?${params}`)), [params]);
   const query = usePageQuery(`${accountId}:masters:options:${kind}:${params}`, load, { delay: 300 });
   return <div><label className="mb-2 block text-xs font-semibold" htmlFor={id}>{t(label)}{required && " *"}</label>
     <Input id={id} list={`${id}-list`} maxLength={160} value={value} onChange={(event) => onChange(event.target.value)} />

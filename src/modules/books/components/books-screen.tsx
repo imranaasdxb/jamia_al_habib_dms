@@ -70,7 +70,8 @@ export function BooksScreen({ account }: { account: Account }) {
       cache.setQueryData(key, { ...data, total: data.total + matches.length,
         rows: data.page === 1 ? [...matches, ...data.rows].slice(0, data.pageSize) : data.rows });
     }
-    cache.invalidate(`${scope}query:`); cache.invalidate(`${account.id}:assignments:stock:`); setMode(null); setBusy(false); setSavedCount(rows.length);
+    cache.invalidate(`${scope}query:`); cache.invalidate(`${scope}entry-context:`);
+    cache.invalidate(`${account.id}:assignments:stock:`); setMode(null); setBusy(false); setSavedCount(rows.length);
   }
   return <AppShell account={account} headerTitle="books" sampleData={false} search={search} onSearchChange={setSearch}>
     <div className={"page-header flex justify-between items-center gap-[20px] mb-[22px]"}><div><h1 className={"page-title text-[length:34px] font-bold tracking-[-1.3px] [html[lang='ur']_&]:tracking-0"}>{t("booksStock")}</h1><p className={"page-subtitle text-[color:var(--muted-foreground)] mt-[7px]"}>{t("booksDescription")}</p></div>

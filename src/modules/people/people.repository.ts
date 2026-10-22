@@ -37,6 +37,7 @@ function collectorQuery(tx: RequestDatabase) {
     remarks: people.remarks, updatedAt: people.updatedAt, photoKey: people.profilePhotoKey,
     code: collectors.code, fatherName: collectors.fatherName, whatsapp: collectors.whatsapp,
     idProofName: collectors.idProofName, commissionBasisPoints: collectors.commissionBasisPoints,
+    leftoverEligible: collectors.leftoverEligible,
     village: collectors.village, postOffice: collectors.postOffice, block: collectors.block,
     district: collectors.district, state: collectors.state, pin: collectors.pin,
   }).from(people).innerJoin(collectors, eq(collectors.personId, people.id));
@@ -64,6 +65,7 @@ export async function listCollectors(query: CollectorQuery) {
     const area = literalLike(query.area);
     const where = and(liveCollectors,
       query.status === "ALL" ? undefined : eq(people.status, query.status),
+      query.leftoverEligible === "YES" ? eq(collectors.leftoverEligible, true) : undefined,
       query.search ? or(ilike(people.fullName, term), ilike(people.phone, term), ilike(people.email, term), ilike(collectors.code, term)) : undefined,
       query.area ? or(ilike(collectors.village, area), ilike(collectors.district, area), ilike(collectors.block, area)) : undefined);
     const [result] = await tx.select({ total: count() }).from(people)
@@ -95,6 +97,23 @@ async function applyChanges(tx: RequestDatabase, actorId: string, id: string, va
   await tx.update(collectors).set({ ...detailValues(values), updatedBy: actorId, updatedAt: new Date() })
     .where(eq(collectors.personId, id));
   return serialize(await findCollector(tx, id));
+}
+
+export async function setCollectorEligibility(id: string, input: { leftoverEligible: boolean; version: string }) {
+  return withPeopleDatabase(async (tx, { account }) => {
+    if (account.role !== "ADMIN") throw new AuthFailure("ACCESS_DENIED");
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`dms:collector:${id}`}))`);
+    const previous = await findCollector(tx, id, true);
+    if (previous.updatedAt.toISOString() !== input.version) throw new AuthFailure("STALE_COLLECTOR", 409);
+    if (previous.leftoverEligible === input.leftoverEligible) return serialize(previous);
+    const reason = input.leftoverEligible ? "Enabled leftover book assignment eligibility" : "Disabled leftover book assignment eligibility";
+    await tx.execute(sql`select set_config('app.change_reason', ${reason}, true)`);
+    const updatedAt = new Date();
+    await tx.update(people).set({ updatedAt, updatedBy: account.id }).where(eq(people.id, id));
+    await tx.update(collectors).set({ leftoverEligible: input.leftoverEligible, updatedAt, updatedBy: account.id })
+      .where(eq(collectors.personId, id));
+    return serialize(await findCollector(tx, id));
+  });
 }
 
 export async function saveCollector(input: CollectorSubmission, photo: File | null, existingId?: string) {

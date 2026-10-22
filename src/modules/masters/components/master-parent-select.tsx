@@ -5,7 +5,7 @@ import { usePageQuery } from "@/components/page-data-provider";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { mastersError, mastersRequest } from "@/modules/masters/masters.client";
-import { mastersResponseSchema } from "@/modules/masters/masters.schema";
+import { masterOptionsResponseSchema } from "@/modules/masters/masters.schema";
 import type { MasterValues } from "@/modules/masters/masters.schema";
 
 export function MasterParentSelect({ accountId, bank, donation = false, level, value, onChange, currentName, error }: {
@@ -18,7 +18,7 @@ export function MasterParentSelect({ accountId, bank, donation = false, level, v
   const parentLevel = level === "DISTRICT" ? "STATE" : level === "BLOCK" ? "DISTRICT" : "BLOCK";
   const kind = donation ? "DONATION_CATEGORY" : bank ? "BANK" : "AREA";
   const params = new URLSearchParams({ kind, level: bank || donation ? "" : parentLevel, search: search.trim(), page: String(page) }).toString();
-  const fetchOptions = useCallback(async () => mastersResponseSchema.parse(await mastersRequest(`/api/v1/masters/options?${params}`)), [params]);
+  const fetchOptions = useCallback(async () => masterOptionsResponseSchema.parse(await mastersRequest(`/api/v1/masters/options?${params}`)), [params]);
   const query = usePageQuery(`${accountId}:masters:options:${kind}:${params}`, fetchOptions, { delay: search ? 300 : 0 });
   const loading = query.loading || query.stale;
   const options = query.data?.data ?? [];

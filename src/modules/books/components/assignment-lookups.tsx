@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { booksError, booksRequest } from "@/modules/books/books.client";
 import { assignmentsResponseSchema } from "@/modules/books/assignments.schema";
 import { collectorsResponseSchema } from "@/modules/people/people.schema";
-import { mastersResponseSchema } from "@/modules/masters/masters.schema";
+import { masterOptionsResponseSchema } from "@/modules/masters/masters.schema";
 import type { CollectorRow } from "@/modules/people/people.schema";
 
 function LookupPages({ page, total, size, loading, onPage }: { page: number; total: number; size: number; loading: boolean; onPage: (page: number) => void }) {
@@ -15,33 +15,36 @@ function LookupPages({ page, total, size, loading, onPage }: { page: number; tot
   return total > size && <div className={"books-lookup-pages flex justify-between"}><Button variant="ghost" size="small" disabled={loading || page <= 1} onClick={() => onPage(page - 1)}>{t("usersPrevious")}</Button>
     <Button variant="ghost" size="small" disabled={loading || page * size >= total} onClick={() => onPage(page + 1)}>{t("usersNext")}</Button></div>;
 }
-export function AssignmentFundraiser({ accountId, value, initialId, initialCode, onChange, excludedIds = [] }: {
+export function AssignmentFundraiser({ accountId, value, initialId, initialCode, onChange, excludedIds = [], leftoverOnly = false }: {
   accountId: string; value: CollectorRow | null; initialId: string; initialCode: string; onChange: (row: CollectorRow) => void;
   excludedIds?: string[];
+  leftoverOnly?: boolean;
 }) {
   const { t } = useLanguage(); const id = useId();
   const [search, setSearch] = useState(initialCode); const [page, setPage] = useState(1);
-  const params = new URLSearchParams({ search: search.trim(), area: "", status: "ACTIVE", page: String(page) }).toString();
+  const params = new URLSearchParams({ search: search.trim(), area: "", status: "ACTIVE", page: String(page), ...(leftoverOnly ? { leftoverEligible: "YES" } : {}) }).toString();
   const fetchData = useCallback(async () => {
     const result = collectorsResponseSchema.parse(await booksRequest(`/api/v1/people?${params}`));
     return { collectors: result.data, ...result.meta };
   }, [params]);
-  const query = usePageQuery(`${accountId}:people:query:${params}`, fetchData, { delay: search ? 300 : 0 });
+  const query = usePageQuery(`${accountId}:people:${leftoverOnly ? "eligible:" : ""}query:${params}`, fetchData, { delay: search ? 300 : 0 });
   const rows = query.data?.collectors ?? [];
   useEffect(() => {
     const initial = query.data?.collectors.find((row) => row.id === initialId);
-    if (initial && !value) onChange(initial);
-  }, [query.data, initialId, value, onChange]);
+    if (initial && !value && !query.stale && !excludedIds.includes(initial.id) && (!leftoverOnly || initial.leftoverEligible)) onChange(initial);
+  }, [query.data, query.stale, initialId, value, onChange, excludedIds, leftoverOnly]);
   return <div><label className={"field-label block text-[length:12px] font-semibold mb-[8px]"} htmlFor={id}>{t("peopleCollectors")} *</label>
     <Input type="search" value={search} maxLength={100} aria-label={t("assignFindFundraiser")} placeholder={t("assignFindFundraiser")}
       onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }}
       onChange={(event) => { setSearch(event.target.value); setPage(1); }} />
     <select id={id} className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} required value={value?.id ?? ""} aria-busy={query.loading || query.stale} onChange={(event) => {
-      const selected = rows.find((row) => row.id === event.target.value); if (selected && !excludedIds.includes(selected.id)) onChange(selected);
+      const selected = rows.find((row) => row.id === event.target.value); if (selected && !excludedIds.includes(selected.id) && (!leftoverOnly || selected.leftoverEligible)) onChange(selected);
     }}><option value="" disabled>{t("booksChooseOption")}</option>
-      {value && !rows.some((row) => row.id === value.id) && <option value={value.id}>{value.fullName} · {value.code}</option>}
+      {value && !rows.some((row) => row.id === value.id) && <option value={value.id} disabled={leftoverOnly && !value.leftoverEligible}>{value.fullName} · {value.code}</option>}
       {rows.map((row) => <option key={row.id} value={row.id} disabled={excludedIds.includes(row.id)}>{row.fullName} · {row.code}{excludedIds.includes(row.id) && ` · ${t("leftoversPreviousFundraiser")}`}</option>)}
     </select>
+    {leftoverOnly && <p className="mt-2 text-xs text-muted-foreground">{t("peopleLeftoverHelp")}</p>}
+    {leftoverOnly && query.data && rows.length === 0 && !query.loading && <p className="mt-2 text-xs text-muted-foreground">{t("leftoversNoEligibleFundraisers")}</p>}
     {query.loading && <span className={"field-hint block mt-[8px] text-[length:11px] text-[color:var(--muted-foreground)] leading-[1.7]"} role="status">{t("working")}</span>}
     {query.error != null && <p className={"field-error block mt-[7px] text-[length:11px] text-[color:var(--danger)]"} role="alert">{t(booksError(query.error))}</p>}
     {query.data && <LookupPages page={query.data.page} total={query.data.total} size={query.data.pageSize} loading={query.loading} onPage={setPage} />}
@@ -68,7 +71,7 @@ export function AssignmentAreas({ accountId, value, onChange }: { accountId: str
   const { t, language } = useLanguage();
   const [search, setSearch] = useState(""); const [page, setPage] = useState(1);
   const params = new URLSearchParams({ kind: "AREA", level: "", search: search.trim(), page: String(page) }).toString();
-  const fetchData = useCallback(async () => mastersResponseSchema.parse(await booksRequest(`/api/v1/masters/options?${params}`)), [params]);
+  const fetchData = useCallback(async () => masterOptionsResponseSchema.parse(await booksRequest(`/api/v1/masters/options?${params}`)), [params]);
   const query = usePageQuery(`${accountId}:masters:options:AREA:${params}`, fetchData, { delay: search ? 300 : 0 });
   return <fieldset className={"assignment-areas min-w-0 [border:1px_solid_var(--border)] rounded-[var(--radius)] p-[14px] m-0"}><legend className={"field-label block text-[length:12px] font-semibold mb-[8px]"}>{t("assignAreas")} *</legend>
     <Input type="search" value={search} maxLength={100} placeholder={t("mastersParentSearch")} aria-label={t("assignAreas")}

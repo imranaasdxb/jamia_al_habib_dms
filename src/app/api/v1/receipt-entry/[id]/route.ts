@@ -14,7 +14,7 @@ export async function GET(request: NextRequest, context: Context) {
   try {
     const page = z.coerce.number().int().min(1).max(100000000).safeParse(request.nextUrl.searchParams.get("page") ?? 1);
     if (!page.success) throw new AuthFailure("INVALID_INPUT", 400);
-    return userResponse(await getReceiptBook(await target(context), page.data), 200, { receiptContract: "book-submission-v1" });
+    return userResponse(await getReceiptBook(await target(context), request.nextUrl.searchParams.get("resume") === "1" ? undefined : page.data), 200, { receiptContract: "book-submission-v1" });
   } catch (error) { return receiptFailure(error); }
 }
 export async function POST(request: NextRequest, context: Context) {

@@ -23,11 +23,15 @@ export const collectorValuesSchema = z.strictObject({
 });
 export const collectorRowSchema = collectorValuesSchema.extend({
   id: z.uuid(), code: z.string(), updatedAt: z.iso.datetime(), hasPhoto: z.boolean(),
+  leftoverEligible: z.boolean(),
 });
+export const collectorEligibilitySchema = z.strictObject({ leftoverEligible: z.boolean(), version: z.iso.datetime() });
+export const collectorEligibilityResponseSchema = z.object({ data: collectorRowSchema });
 export const collectorQuerySchema = z.object({
   search: z.string().trim().max(100).default(""),
   status: z.enum(["ALL", "ACTIVE", "INACTIVE", "BLOCKED"]).default("ALL"),
   area: z.string().trim().max(100).default(""),
+  leftoverEligible: z.enum(["ALL", "YES"]).default("ALL"),
   page: z.coerce.number().int().min(1).max(100000).default(1),
 });
 export const collectorSubmissionSchema = z.strictObject({

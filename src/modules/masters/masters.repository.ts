@@ -51,6 +51,17 @@ export async function listMasterRecords(query: MasterQuery, options = false) {
     const total = result?.total ?? 0;
     const pageSize = options ? 50 : 20;
     const page = Math.min(query.page, Math.max(1, Math.ceil(total / pageSize)));
+    if (options) {
+      const order = query.kind === "DONATION_HEAD" || query.kind === "DONATION_CATEGORY"
+        ? [asc(masterRecords.sortOrder), asc(masterRecords.nameEn), asc(masterRecords.id)]
+        : [desc(masterRecords.createdAt), desc(masterRecords.id)];
+      const rows = await tx.select({ id: masterRecords.id, nameEn: masterRecords.nameEn, nameUr: masterRecords.nameUr,
+        ...(query.kind === "DONATION_HEAD" ? { needsDetail: masterRecords.needsDetail } : {}),
+        ...(query.kind === "BOOK_TYPE" ? { code: masterRecords.code } : {}),
+        ...(query.kind === "TOKEN_VALUE" ? { tokenValue: sql<string>`${masterRecords.tokenValueRupees}::text` } : {}),
+      }).from(masterRecords).where(where).orderBy(...order).limit(pageSize).offset((page - 1) * pageSize);
+      return { rows, total, page, pageSize };
+    }
     const parent = alias(masterRecords, "parent_master");
     const order = query.kind === "DONATION_HEAD" ? [asc(parent.sortOrder), asc(masterRecords.sortOrder), asc(masterRecords.nameEn)]
       : query.kind === "DONATION_CATEGORY" ? [asc(masterRecords.sortOrder), asc(masterRecords.nameEn)]

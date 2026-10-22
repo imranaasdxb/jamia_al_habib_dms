@@ -85,6 +85,8 @@ function MasterCategory({ kind, accountId }: { kind: MasterKind; accountId: stri
     }
     cache.invalidate(`${scope}query:${kind}:`);
     cache.invalidate(`${scope}options:${kind}:`);
+    if (kind === "DONATION_CATEGORY" || kind === "DONATION_HEAD") cache.invalidate(`${scope}receipt-donations`);
+    if (kind === "AREA") cache.invalidate(`${accountId}:leftovers:options:`);
     if (kind === "BANK") cache.invalidate(`${scope}query:BANK_ACCOUNT:`);
     if (kind === "DONATION_CATEGORY") cache.invalidate(`${scope}query:DONATION_HEAD:`);
     setOpen(false); setBusy(false); setNotice(true);

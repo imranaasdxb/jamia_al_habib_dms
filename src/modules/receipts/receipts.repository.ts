@@ -6,6 +6,7 @@ import { AuthFailure } from "@/modules/auth/auth.types";
 import { returnRowSchema } from "@/modules/books/returns.schema";
 import { donorSuggestionSchema, receiptBookSchema, receiptHeaderSchema, receiptRecordSchema, receiptValuesSchema } from "@/modules/receipts/receipts.schema";
 import { readProfilePhoto, removeProfilePhoto, uploadReceiptPhoto } from "@/lib/storage/profile-photos";
+import { RECEIPT_REASON_OPTIONS } from "@/modules/receipts/receipt-options";
 import type { RequestDatabase } from "@/lib/db";
 import type { ReceiptAction, ReceiptQuery, receiptWorkflowActionSchema } from "@/modules/receipts/receipts.schema";
 import type { z } from "zod";
@@ -38,28 +39,31 @@ export async function receiptQueue(query: ReceiptQuery) {
     return { rows: rows.map(header), total, page, pageSize };
   });
 }
-async function readBook(tx: RequestDatabase, id: string, requestedPage: number) {
+async function readBook(tx: RequestDatabase, id: string, requestedPage?: number, allReceipts = false) {
   const [row] = await headerQuery(tx).where(and(eq(bookReturns.id, id), isNull(bookReturns.deletedAt))).limit(1);
   if (!row) throw new ReceiptFailure("RECEIPT_BOOK_NOT_FOUND", 404);
   const total = row.returned.lastUsed === null ? 0 : row.returned.lastUsed - row.returned.receiptFrom + 1;
-  const pageSize = 20; const page = Math.min(requestedPage, Math.max(1, Math.ceil(total / pageSize)));
-  const first = row.returned.receiptFrom + (page - 1) * pageSize; const last = Math.min(first + pageSize - 1, row.returned.lastUsed ?? first - 1);
-  const receipts = await tx.select().from(bookReceipts).where(and(eq(bookReceipts.returnId, id), isNull(bookReceipts.deletedAt),
-    sql`${bookReceipts.number} between ${first} and ${last}`)).orderBy(asc(bookReceipts.number));
   const [totals] = await tx.select({ saved: count(), valid: sql<number>`count(*) filter (where status = 'VALID')::integer`,
+    checkedCount: sql<number>`count(*) filter (where checked)::integer`,
+    lastCheckedNumber: sql<number | null>`(array_agg(receipt_number order by updated_at desc, receipt_number desc) filter (where checked))[1]`,
     total: sql<number>`coalesce(sum(amount_paise) filter (where status = 'VALID'),0)::double precision`,
     cash: sql<number>`coalesce(sum(amount_paise) filter (where status = 'VALID' and data->>'paymentMode' = 'CASH'),0)::double precision`,
     digital: sql<number>`coalesce(sum(amount_paise) filter (where status = 'VALID' and data->>'paymentMode' = 'DIGITAL'),0)::double precision`,
     cheque: sql<number>`coalesce(sum(amount_paise) filter (where status = 'VALID' and data->>'paymentMode' = 'CHEQUE'),0)::double precision` })
     .from(bookReceipts).where(and(eq(bookReceipts.returnId, id), isNull(bookReceipts.deletedAt)));
+  const pageSize = allReceipts ? Math.max(total, 1) : 20;
+  const resumeNumber = totals?.lastCheckedNumber ?? row.returned.receiptFrom;
+  const page = Math.min(requestedPage ?? Math.floor((resumeNumber - row.returned.receiptFrom) / pageSize) + 1, Math.max(1, Math.ceil(total / pageSize)));
+  const first = row.returned.receiptFrom + (page - 1) * pageSize; const last = Math.min(first + pageSize - 1, row.returned.lastUsed ?? first - 1);
+  const receipts = await tx.select().from(bookReceipts).where(and(eq(bookReceipts.returnId, id), isNull(bookReceipts.deletedAt),
+    sql`${bookReceipts.number} between ${first} and ${last}`)).orderBy(asc(bookReceipts.number));
   const byNumber = new Map(receipts.map((receipt) => [receipt.number, serialize(receipt)]));
-  const [checked] = await tx.select({ total: count() }).from(bookReceipts).where(and(eq(bookReceipts.returnId, id), eq(bookReceipts.checked, true), isNull(bookReceipts.deletedAt)));
   const workflow = await workflowRows(tx, id);
   return receiptBookSchema.parse({ header: header(row), totals: totals ?? { saved: 0, valid: 0, total: 0, cash: 0, digital: 0, cheque: 0 },
-    checkedCount: checked?.total ?? 0, ...workflow,
+    checkedCount: totals?.checkedCount ?? 0, lastCheckedNumber: totals?.lastCheckedNumber ?? null, ...workflow,
     rows: Array.from({ length: Math.max(0, last - first + 1) }, (_, index) => ({ number: first + index, record: byNumber.get(first + index) ?? null })), total, page, pageSize });
 }
-export const getReceiptBook = (id: string, page: number) => withBooksDatabase((tx) => readBook(tx, id, page));
+export const getReceiptBook = (id: string, page?: number) => withBooksDatabase((tx) => readBook(tx, id, page, true));
 async function workflowRows(tx: RequestDatabase, returnId?: string) {
   const requests = await tx.select().from(receiptEditRequests).where(returnId ? eq(receiptEditRequests.returnId, returnId) : undefined)
     .orderBy(desc(receiptEditRequests.createdAt)).limit(250);
@@ -93,10 +97,21 @@ export async function mutateReceiptBook(id: string, action: ReceiptAction) {
       } else {
         // The per-book advisory lock above serializes saves. Row locks and return updates
         // belong to the protected triggers; the app role has no UPDATE grant here.
-        const [returned] = await tx.select().from(bookReturns).where(and(eq(bookReturns.id, id), isNull(bookReturns.deletedAt))).limit(1);
-        if (!returned) throw new ReceiptFailure("RECEIPT_BOOK_NOT_FOUND", 404);
-        const values = { ...action.values, receiverName: returned.collectorName };
+        const fixedReason = RECEIPT_REASON_OPTIONS.find((option) => option.code === action.values.reasonId);
+        const [context] = await tx.select({ returned: bookReturns,
+          fixedReasonId: fixedReason ? sql<string | null>`(select id::text from public.master_records
+            where kind = 'RECEIPT_REASON' and code = ${fixedReason.code} and active = true and deleted_at is null limit 1)` : sql<null>`null::text`,
+        }).from(bookReturns).where(and(eq(bookReturns.id, id), isNull(bookReturns.deletedAt))).limit(1);
+        if (!context) throw new ReceiptFailure("RECEIPT_BOOK_NOT_FOUND", 404);
+        const reasonId = fixedReason ? context.fixedReasonId ?? "" : action.values.reasonId;
+        if (fixedReason && !reasonId) throw new ReceiptFailure("RECEIPT_INVALID", 400);
+        const returned = context.returned;
+        const values = { ...action.values, reasonId, receiverName: returned.collectorName,
+          heads: action.values.heads.length === 1 ? action.values.heads.map((head) => ({ ...head, amountPaise: action.values.amountPaise })) : action.values.heads };
         const [previous] = await tx.select().from(bookReceipts).where(eq(bookReceipts.number, action.number)).limit(1);
+        if (previous?.returnId === id && values.status === "CANCELLED" && previous.status !== "CANCELLED") {
+          throw new ReceiptFailure("RECEIPT_CANCELLATION_NOT_ALLOWED", 409, action.number);
+        }
         if (previous && previous.returnId === id && previous.version !== action.version && previous.checked === action.checked
           && JSON.stringify(receiptValuesSchema.parse(previous.data)) === JSON.stringify(values)) return readBook(tx, id, action.page);
         if (returned.finalizedAt) {
@@ -139,6 +154,10 @@ export function receiptDatabaseFailure(error: unknown) {
       return new ReceiptFailure("RECEIPT_SETUP_REQUIRED", 503, undefined, setupDetails);
     }
     if (["55P03", "57014"].includes(code)) return new ReceiptFailure("RECEIPT_DATABASE_BUSY", 503);
+    if (code === "P0001" && "message" in value && typeof value.message === "string"
+      && ["RECEIPT_CASH_LIMIT", "RECEIPT_DIGITAL_LIMIT", "RECEIPT_TOTAL_LIMIT"].includes(value.message)) {
+      return new ReceiptFailure(value.message, 409);
+    }
     if (code === "42501") return new ReceiptFailure("RECEIPT_SETUP_PERMISSIONS", 503);
     if (code === "25P02") return new ReceiptFailure("RECEIPT_SETUP_REQUIRED", 503, undefined, { sqlState: code });
     if (value.code === "23505") return new ReceiptFailure("RECEIPT_DUPLICATE");

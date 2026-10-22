@@ -149,6 +149,18 @@ export const bookCases = pgTable("book_cases", {
 }, (table) => [uniqueIndex("book_cases_open_book_idx").on(table.bookId).where(sql`closed_at is null`),
   uniqueIndex("book_cases_assignment_book_idx").on(table.assignmentId, table.bookId)]);
 
+export const bookLosses = pgTable("book_losses", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  caseId: uuid("case_id").notNull().unique().references(() => bookCases.id, { onDelete: "restrict" }),
+  bookId: uuid("book_id").notNull().references(() => books.id, { onDelete: "restrict" }),
+  assignmentId: uuid("assignment_id").notNull().references(() => bookAssignments.id, { onDelete: "restrict" }),
+  collectorId: uuid("collector_id").notNull().references(() => people.id, { onDelete: "restrict" }),
+  receiptFrom: integer("receipt_from").notNull(), receiptTo: integer("receipt_to").notNull(),
+  sourceCode: text("source_code").notNull(), reason: text("reason").notNull(),
+  reportedByName: text("reported_by_name").notNull(),
+  ...auditColumns(),
+}, (table) => [index("book_losses_book_idx").on(table.bookId), index("book_losses_collector_idx").on(table.collectorId)]);
+
 export const bookReturns = pgTable("book_returns", {
   id: uuid("id").primaryKey().defaultRandom(),
   number: text("number").notNull().unique().default(sql`'RET-' || extract(year from current_date)::text || '-' || lpad(nextval('public.return_number_seq')::text, 6, '0')`),
@@ -242,6 +254,7 @@ export const collectors = pgTable("collectors", {
   whatsapp: text("whatsapp").notNull().default(""),
   idProofName: text("id_proof_name").notNull().default(""),
   commissionBasisPoints: integer("commission_basis_points"),
+  leftoverEligible: boolean("leftover_eligible").notNull().default(false),
   village: text("village").notNull(), postOffice: text("post_office").notNull(),
   block: text("block").notNull().default(""), district: text("district").notNull(),
   state: text("state").notNull().default("Odisha"), pin: text("pin").notNull(),

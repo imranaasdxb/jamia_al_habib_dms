@@ -63,6 +63,22 @@ async function readPayload(response: Response): Promise<unknown> {
 }
 
 export async function handleAuthPost(request: NextRequest, context: AuthRouteContext) {
+  const startedAt = performance.now();
+  const timings: string[] = [];
+  async function measure<T>(name: string, operation: () => Promise<T>): Promise<T> {
+    const start = performance.now();
+    try {
+      return await operation();
+    } finally {
+      timings.push(`${name};dur=${(performance.now() - start).toFixed(1)}`);
+    }
+  }
+  function finish(response: NextResponse) {
+    response.headers.append("Server-Timing", [...timings,
+      `auth_total;dur=${(performance.now() - startedAt).toFixed(1)}`].join(", "));
+    response.headers.set("Cache-Control", "no-store");
+    return response;
+  }
   try {
     requireSameOrigin(request);
     const path = (await context.params).path.join("/");
@@ -83,8 +99,8 @@ export async function handleAuthPost(request: NextRequest, context: AuthRouteCon
     const email = "email" in input ? input.email : "";
     const ip = request.headers.get("x-real-ip")
       ?? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-    if (!await consumeAuthRateLimit(action, email, ip)) {
-      return authErrorResponse("RATE_LIMITED", 429);
+    if (!await measure("rate_limit_db", () => consumeAuthRateLimit(action, email, ip))) {
+      return finish(authErrorResponse("RATE_LIMITED", 429));
     }
     const flow = decodeAuthFlow(request.cookies.get(AUTH_FLOW_COOKIE)?.value);
     requireFlow(input, flow);
@@ -93,16 +109,21 @@ export async function handleAuthPost(request: NextRequest, context: AuthRouteCon
     }
 
     if (input.action === "logout") {
-      const { data: session } = await getAuth().getSession();
+      const { data: session } = await measure("session_lookup", () => getAuth().getSession());
       const token = request.cookies.get(APP_SESSION_COOKIE)?.value;
-      if (session?.user && token) await revokeAppSession({ id: session.user.id,
-        email: session.user.email, emailVerified: session.user.emailVerified }, token);
+      if (session?.user && token) {
+        const identity = { id: session.user.id, email: session.user.email,
+          emailVerified: session.user.emailVerified };
+        await measure("app_session_db", () => revokeAppSession(identity, token));
+      }
     }
 
     // Let the SDK proxy handle managed Auth paths and all provider session cookies.
     // The allowlist above deliberately excludes user/admin management and OTP sign-in.
-    const upstream = await getAuth().handler().POST(request, context);
-    const payload = await readPayload(upstream);
+    const { upstream, payload } = await measure("neon_auth", async () => {
+      const upstream = await getAuth().handler().POST(request, context);
+      return { upstream, payload: await readPayload(upstream) };
+    });
     const response = new NextResponse(upstream.body, { status: upstream.status, headers: upstream.headers });
     response.headers.set("Cache-Control", "no-store");
 
@@ -111,7 +132,7 @@ export async function handleAuthPost(request: NextRequest, context: AuthRouteCon
       if (input.action === "login" && failure.success && failure.data.code === "EMAIL_NOT_VERIFIED") {
         setFlow(response, { email: input.email, purpose: "signup", expiresAt: Date.now() + 600000 });
       }
-      return response;
+      return finish(response);
     }
 
     if (input.action === "signup" || input.action === "login") {
@@ -123,7 +144,7 @@ export async function handleAuthPost(request: NextRequest, context: AuthRouteCon
         await bindIdentity(identity.data.user);
         setFlow(response, { email: input.email, purpose: "signup", expiresAt: Date.now() + 600000 });
       } else {
-        const token = await createAppSession(identity.data.user);
+        const token = await measure("app_session_db", () => createAppSession(identity.data.user));
         response.cookies.set(APP_SESSION_COOKIE, token, { ...cookieOptions, maxAge: 43200 });
         response.cookies.delete(AUTH_FLOW_COOKIE);
       }
@@ -145,10 +166,10 @@ export async function handleAuthPost(request: NextRequest, context: AuthRouteCon
     if (input.action === "reset" || input.action === "logout") {
       response.cookies.delete(APP_SESSION_COOKIE);
     }
-    return response;
+    return finish(response);
   } catch (error) {
-    if (error instanceof AuthFailure) return authErrorResponse(error.code, error.status);
-    if (error instanceof SyntaxError) return authErrorResponse("INVALID_INPUT", 400);
-    return authErrorResponse("AUTH_UNAVAILABLE", 503);
+    if (error instanceof AuthFailure) return finish(authErrorResponse(error.code, error.status));
+    if (error instanceof SyntaxError) return finish(authErrorResponse("INVALID_INPUT", 400));
+    return finish(authErrorResponse("AUTH_UNAVAILABLE", 503));
   }
 }

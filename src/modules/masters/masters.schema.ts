@@ -48,6 +48,12 @@ export const masterSubmissionSchema = z.strictObject({ kind: masterKindSchema, v
 });
 export const mastersResponseSchema = z.object({ data: z.array(masterRowSchema),
   meta: z.object({ total: z.number(), page: z.number(), pageSize: z.number() }) });
+export const masterOptionSchema = masterRowSchema.pick({ id: true, nameEn: true, nameUr: true }).extend({
+  needsDetail: z.boolean().optional(), code: z.string().optional(), tokenValue: z.enum(["", "10", "20", "50"]).optional(),
+});
+export const masterOptionsResponseSchema = z.object({ data: z.array(masterOptionSchema),
+  meta: z.object({ total: z.number(), page: z.number(), pageSize: z.number() }) });
+export type MasterOption = z.infer<typeof masterOptionSchema>;
 export const masterSaveResponseSchema = z.object({ data: masterRowSchema });
 export type MasterRow = z.infer<typeof masterRowSchema>;
 export type MasterQuery = z.infer<typeof masterQuerySchema>;

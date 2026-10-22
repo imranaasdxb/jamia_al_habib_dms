@@ -5,14 +5,14 @@ import { usePageQuery } from "@/components/page-data-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { booksError, booksRequest } from "@/modules/books/books.client";
-import { mastersResponseSchema } from "@/modules/masters/masters.schema";
+import { masterOptionsResponseSchema } from "@/modules/masters/masters.schema";
 import type { MessageKey } from "@/lib/i18n/messages";
-import type { MasterKind, MasterRow } from "@/modules/masters/masters.schema";
+import type { MasterKind, MasterOption } from "@/modules/masters/masters.schema";
 
 export function BookMasterSelect({ accountId, kind, value, onChange, onOptionChange, label, parentId, currentName, required = false, error = false, disabled = false, searchable = false }: {
   accountId: string; kind: MasterKind; value: string; onChange: (value: string) => void; parentId?: string; currentName?: string;
   label: MessageKey; required?: boolean; error?: boolean; disabled?: boolean; searchable?: boolean;
-  onOptionChange?: (row: MasterRow | null) => void;
+  onOptionChange?: (row: MasterOption | null) => void;
 }) {
   const { t, language } = useLanguage();
   const id = useId();
@@ -20,11 +20,11 @@ export function BookMasterSelect({ accountId, kind, value, onChange, onOptionCha
   const [page, setPage] = useState(1);
   const [selectedName, setSelectedName] = useState("");
   const params = new URLSearchParams({ kind, level: "", search: search.trim(), page: String(page), ...(parentId ? { parentId } : {}) }).toString();
-  const fetchOptions = useCallback(async () => mastersResponseSchema.parse(await booksRequest(`/api/v1/masters/options?${params}`)), [params]);
+  const fetchOptions = useCallback(async () => masterOptionsResponseSchema.parse(await booksRequest(`/api/v1/masters/options?${params}`)), [params]);
   const query = usePageQuery(`${accountId}:masters:options:${kind}:${params}`, fetchOptions, { enabled: !disabled, delay: search ? 300 : 0 });
   const loading = query.loading || query.stale;
   const options = query.data?.data ?? [];
-  const optionValue = (row: (typeof options)[number]) => kind === "TOKEN_VALUE" ? row.tokenValue : kind === "BOOK_TYPE" ? row.code : row.id;
+  const optionValue = (row: (typeof options)[number]) => kind === "TOKEN_VALUE" ? row.tokenValue ?? "" : kind === "BOOK_TYPE" ? row.code ?? "" : row.id;
   return <div className={"books-master-select min-w-0 [&_>_.input_+_.input]:mt-[8px]"}><label className={"field-label block text-[length:12px] font-semibold mb-[8px]"} htmlFor={id}>{t(label)}{required && " *"}</label>
     {searchable && <Input type="search" maxLength={100} value={search} placeholder={t("booksEditionSearch")} aria-label={t("booksEditionSearch")}
       onChange={(event) => { setSearch(event.target.value); setPage(1); }} />}

@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { AssignmentForm } from "@/modules/books/components/assignment-form";
+import { LeftoverReassignForm } from "@/modules/books/components/leftover-reassign-form";
 import { AssignmentSlipView } from "@/modules/books/components/assignment-slip";
 import { booksError, booksRequest } from "@/modules/books/books.client";
 import { displayMoney } from "@/modules/books/returns.schema";
@@ -24,7 +24,7 @@ const LeftoverTableRow = memo(function LeftoverTableRow({ row, checked, blocked,
   onToggle: (row: LeftoverRow) => void; onAssign: (row: LeftoverRow) => void;
 }) {
   const { t, language } = useLanguage();
-  return <tr><td><input type="checkbox" aria-label={`${t("leftoversSelect")} ${row.code}`} checked={checked} disabled={!row.assignable || blocked}
+  return <tr className="transition-colors hover:bg-muted/40"><td><input type="checkbox" className="size-4 align-middle accent-primary disabled:cursor-not-allowed" aria-label={`${t("leftoversSelect")} ${row.code}`} checked={checked} disabled={!row.assignable || blocked}
     onChange={() => onToggle(row)} /></td><td><strong>{row.code}</strong><span className={"books-secondary block w-[fit-content] mt-[5px] text-[color:var(--muted-foreground)] text-[length:11px]"}>{t("leftoversOriginalBook")}: {row.book.bookNumber}</span>
     <span className={"books-secondary block w-[fit-content] mt-[5px] text-[color:var(--muted-foreground)] text-[length:11px]"}>{language === "ur" ? row.book.editionNameUr : row.book.editionNameEn} · {t(row.book.bookType === "TOKEN" ? "booksToken" : "booksRegular")}
       {row.book.tokenValuePaise !== null && ` ${displayMoney(row.book.tokenValuePaise, language)}`}</span></td>
@@ -45,6 +45,7 @@ export function LeftoversScreen({ account }: { account: Account }) {
   const [status, setStatus] = usePageState<LeftoversQuery["status"]>(`${scope}status`, "AVAILABLE");
   const [selected, setSelected] = useState<LeftoverRow[]>([]); const [open, setOpen] = useState(false); const [busy, setBusy] = useState(false);
   const [viewing, setViewing] = useState<string | null>(null); const [notice, setNotice] = useState("");
+  const [lastAssignment, setLastAssignment] = useState<string | null>(null);
   const params = new URLSearchParams({ search: search.trim(), status, page: String(page) }).toString(); const key = `${scope}query:${params}`;
   const fetchData = useCallback(async (): Promise<LeftoversPage> => {
     const result = leftoversResponseSchema.parse(await booksRequest(`/api/v1/leftover-books?${params}`)); return { rows: result.data, ...result.meta };
@@ -72,13 +73,14 @@ export function LeftoversScreen({ account }: { account: Account }) {
       bookType: cache.read(`${stockScope}type`, "ALL"), tokenValue: cache.read(`${stockScope}token`, ""), page: String(cache.read(`${stockScope}page`, 1)) }).toString();
     const stockKey = `${stockScope}query:${stockParams}`; const stock = cache.entry(stockKey).state.data as BooksPage | undefined;
     if (stock) cache.setQueryData(stockKey, { ...stock, rows: stock.rows.map((book) => updatedBooks.get(book.id) ?? book) });
-    setOpen(false); setSelected([]); setNotice(detail.assignment.number); setViewing(detail.assignment.id);
+    setOpen(false); setSelected([]); setNotice(detail.assignment.number); setLastAssignment(detail.assignment.id);
   }
   return <AppShell account={account} headerTitle="leftoversScreen" sampleData={false} search={search} onSearchChange={(value) => { setSearch(value); setPage(1); }}>
     <div className={"page-header flex justify-between items-center gap-[20px] mb-[22px]"}><div><h1 className={"page-title text-[length:34px] font-bold tracking-[-1.3px] [html[lang='ur']_&]:tracking-0"}>{t("leftoversScreen")}</h1><p className={"page-subtitle text-[color:var(--muted-foreground)] mt-[7px]"}>{t("leftoversDescription")}</p></div>
       <div className={"header-actions flex items-center gap-[12px]"}><Button asChild variant="outline"><Link href="/books/assignments">{t("assignBooks")}</Link></Button>
         <Button disabled={!selected.length} onClick={() => setOpen(true)}>{t("leftoversAssignSelected")} ({selected.length})</Button></div></div>
-    {notice && <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8]"} role="status">{t("assignSaved")} <strong>{notice}</strong></p>}
+    {notice && <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-accent px-4 py-3 text-xs text-primary" role="status"><span>{t("assignSaved")} <strong>{notice}</strong></span>
+      {lastAssignment && <Button variant="ghost" size="small" onClick={() => setViewing(lastAssignment)}>{t("assignSlip")}</Button>}</div>}
     <Card className={"assignment-filters grid grid-cols-[minmax(180px,_1fr)_180px_42px] items-center gap-[12px] p-[18px] max-[650px]:grid-cols-[minmax(0,_1fr)_42px] max-[650px]:[&_>_.input:first-child]:col-[1_/_-1]"}><Input type="search" value={search} maxLength={100} placeholder={t("leftoversSearch")} aria-label={t("search")}
       onChange={(event) => { setSearch(event.target.value); setPage(1); }} />
       <select className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} aria-label={t("status")} value={status} onChange={(event) => {
@@ -88,8 +90,8 @@ export function LeftoversScreen({ account }: { account: Account }) {
     <div className={"books-results flex items-center justify-between gap-[15px] text-[length:12px] min-h-[22px] my-[22px_14px]"}><span>{t("leftoversScreen")} {data?.total ?? 0} · {t("leftoversSelected")}: {selected.length}/150</span>
       {loading && <span className={"muted text-[color:var(--muted-foreground)]"} role="status">{t(data ? "usersUpdating" : "working")}</span>}</div>
     {query.error != null && <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8] error"} role="alert">{t(booksError(query.error))}</p>}
-    {data && data.rows.length > 0 && <Card className={"books-table-card overflow-hidden [&_.table-container]:mt-0 [&_.books-table_:is(th,_td)]:p-[15px_16px] [&_.books-table_:is(th,_td)]:text-start [&_.books-table_:is(th,_td)]:align-middle [&_.books-table_:is(th,_td)]:[overflow-wrap:anywhere] [&_.books-table_:is(th,_td):first-child]:ps-[20px] [&_.books-table_:is(th,_td):last-child]:pe-[20px] [&_.books-stock-table_:is(th,_td):nth-child(n+5)]:text-center"}><div className={"table-container overflow-x-auto mt-[18px] [scrollbar-width:thin] [scrollbar-color:var(--emerald-300)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--emerald-300)]"}><table className={"data-table w-full border-collapse text-start [&_th]:text-[length:10px] [&_th]:text-[color:var(--muted-foreground)] [&_th]:font-normal [&_th]:text-start [&_th]:p-[0_8px_12px] [&_td]:[border-top:1px_solid_var(--border)] [&_td]:p-[13px_8px] [&_td]:text-[length:11px] [&_th:first-child]:ps-0 [&_td:first-child]:ps-0 [&_th:last-child]:pe-0 [&_td:last-child]:pe-0 [&_th.amount-cell]:text-end books-table [&_thead_th]:bg-[var(--muted)] [&_thead_th]:font-semibold [&_thead_th]:text-[length:11px] [&_tbody_td]:text-[length:12px] [&_tbody_td]:leading-[1.6] leftovers-table min-w-[1120px] [table-layout:fixed] [&_:is(th,_td):first-child]:text-center [&_:is(th,_td):nth-child(6)]:text-center [&_:is(th,_td):last-child]:text-center [&_input[type='checkbox']]:[accent-color:var(--primary)] [&_input[type='checkbox']]:w-[16px] [&_input[type='checkbox']]:h-[16px] [&_input[type='checkbox']]:cursor-pointer [&_input:disabled]:cursor-default"}>
-      <colgroup><col style={{ width: "4%" }} /><col style={{ width: "22%" }} /><col style={{ width: "18%" }} /><col style={{ width: "12%" }} /><col style={{ width: "14%" }} /><col style={{ width: "8%" }} /><col style={{ width: "12%" }} /><col style={{ width: "10%" }} /></colgroup>
+    {data && data.rows.length > 0 && <Card className="overflow-hidden"><div className="overflow-x-auto [scrollbar-width:thin]"><table className="w-full min-w-[1100px] table-fixed border-collapse text-xs [&_:is(th,td)]:px-4 [&_:is(th,td)]:text-start [&_:is(th,td)]:align-middle [&_th]:whitespace-nowrap [&_th]:bg-muted/60 [&_th]:py-3.5 [&_th]:text-[11px] [&_th]:font-semibold [&_th]:text-muted-foreground [&_td]:border-t [&_td]:border-border [&_td]:py-4 [&_td]:leading-relaxed [&_:is(th,td):first-child]:text-center [&_:is(th,td):nth-child(6)]:text-center [&_:is(th,td):last-child]:text-center">
+      <colgroup><col className="w-20" /><col /><col className="w-[17%]" /><col className="w-[12%]" /><col className="w-[12%]" /><col className="w-36" /><col className="w-32" /><col className="w-32" /></colgroup>
       <thead><tr><th scope="col">{t("leftoversSelect")}</th><th scope="col">{t("leftoversCode")}</th><th scope="col">{t("leftoversReturnedBy")}</th><th scope="col">{t("returnsDate")}</th>
         <th scope="col">{t("booksReceiptRange")}</th><th scope="col">{t("returnsRemaining")}</th><th scope="col">{t("status")}</th><th scope="col">{t("leftoversAssign")}</th></tr></thead>
       <tbody>{data.rows.map((row) => <LeftoverTableRow key={row.id} row={row} checked={selected.some((item) => item.id === row.id)}
@@ -98,8 +100,8 @@ export function LeftoversScreen({ account }: { account: Account }) {
     {data && <div className={"books-pagination flex items-center justify-between gap-[15px] text-[length:12px] pt-[22px]"}><span className={"muted text-[color:var(--muted-foreground)]"}>{t("usersPage")} {data.page} / {Math.max(1, Math.ceil(data.total / data.pageSize))}</span><div className={"header-actions flex items-center gap-[12px]"}>
       <Button variant="outline" size="small" disabled={loading || data.page <= 1} onClick={() => setPage(data.page - 1)}>{t("usersPrevious")}</Button>
       <Button variant="outline" size="small" disabled={loading || data.page * data.pageSize >= data.total} onClick={() => setPage(data.page + 1)}>{t("usersNext")}</Button></div></div>}
-    <Dialog open={open} busy={busy} onOpenChange={setOpen} className={"assignment-editor-dialog w-[min(980px,_calc(100vw_-_32px))]"} title={t("leftoversAssignTitle")} description={t("leftoversFormHelp")}>
-      {open && <AssignmentForm account={account} initialId="" initialCode="" leftovers={selected} onBusyChange={setBusy} onSaved={saved} />}</Dialog>
+    <Dialog open={open} busy={busy} onOpenChange={setOpen} className="w-[min(860px,calc(100vw-2rem))] [&>div:nth-child(2)]:overflow-hidden" title={t("leftoversAssignTitle")} description={t("peopleLeftoverHelp")}>
+      {open && <LeftoverReassignForm account={account} leftovers={selected} onBusyChange={setBusy} onSaved={saved} />}</Dialog>
     <Dialog open={viewing !== null} onOpenChange={(value) => { if (!value) setViewing(null); }} className={"assignment-slip-dialog w-[min(980px,_calc(100vw_-_32px))]"} title={t("assignSlip")} description={t("assignSlipHelp")}>
       {viewing && <AssignmentSlipView key={viewing} accountId={account.id} id={viewing} />}</Dialog>
   </AppShell>;

@@ -97,6 +97,7 @@ export function SettingsScreen({ account }: { account: Account }) {
     {query.data && <SettingsForm key={query.data.updatedAt} data={query.data} onBusyChange={setBusy} onSaved={(data) => {
       cache.setQueryData(key, data);
       cache.setQueryData(`${account.id}:assignments:defaults`, { data: { returnMonths: data.defaultReturnMonths } });
+      if (data.defaultReturnMonths !== query.data?.defaultReturnMonths) cache.invalidate(`${account.id}:leftovers:options:`);
       cache.write(`${account.id}:settings:session-timeout`, data.sessionTimeoutMinutes);
       setSaved(true);
     }} />}

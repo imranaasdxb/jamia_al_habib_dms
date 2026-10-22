@@ -1,6 +1,9 @@
 "use client";
+import { receiptDonationOptionsSchema } from "@/modules/receipts/receipts.schema";
+import { ReceiptOptionSelect } from "@/modules/receipts/components/receipt-option-select";
+import { RECEIPT_FLAG_OPTIONS } from "@/modules/receipts/receipt-options";
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, Flag, ChevronLeft, ChevronRight } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { AppShell } from "@/components/layout/app-shell";
@@ -50,21 +53,36 @@ export function ReceiptQueueScreen({ account }: { account: Account }) {
 }
 export function ReceiptBookScreen({ account, returnId }: { account: Account; returnId: string }) {
   const { t, language } = useLanguage(); const cache = usePageDataCache(); const scope = `${account.id}:receipts:book:${returnId}:`;
-  const [page, setPage] = usePageState(`${scope}page`, 1); const [selected, setSelected] = usePageState(`${scope}selected`, 0);
-  const [busy, setBusy] = useState(false); const [ready, setReady] = useState(false); const [dirty, setDirty] = useState(false);
+  const loadDonations = useCallback(async () => receiptDonationOptionsSchema.parse(await receiptRequest("/api/v1/receipt-entry/options")).data, []);
+  const donations = usePageQuery(`${account.id}:masters:receipt-donations`, loadDonations);
+  const [flagReason, setFlagReason] = useState("");
+  const [selected, setSelected] = useState(() => cache.read(`${scope}resume-number`, 0));
+  const [jump, setJump] = useState("");
+  const [busy, setBusy] = useState(false); const [dirty, setDirty] = useState(false);
   const [leaving, setLeaving] = useState<number | null>(null); const [confirm, setConfirm] = useState(false); const [finalizing, setFinalizing] = useState(false);
   const [mode, setMode] = useState<"RAISE_ISSUE" | "REQUEST_EDIT" | null>(null); const [reason, setReason] = useState(""); const [sending, setSending] = useState(false);
   const [error, setError] = useState<MessageKey | null>(null); const [notice, setNotice] = useState<MessageKey | null>(null);
-  const key = `${scope}query:${page}`;
-  const load = useCallback(async () => receiptBookResponseSchema.parse(await receiptRequest(`/api/v1/receipt-entry/${returnId}?page=${page}`)).data, [returnId, page]);
+  const key = `${scope}query:all`;
+  const load = useCallback(async () => receiptBookResponseSchema.parse(await receiptRequest(`/api/v1/receipt-entry/${returnId}?resume=1`)).data, [returnId]);
   const query = usePageQuery(key, load, { enabled: !busy && !finalizing && !sending }); const data = query.data;
-  const current = data?.rows.find((row) => row.number === selected) ?? data?.rows[0]; const record = current?.record;
+  const current = data?.rows.find((row) => row.number === (selected || data.lastCheckedNumber)) ?? data?.rows[0]; const record = current?.record;
+  useEffect(() => {
+    if (!data || selected !== 0) return;
+    const number = data.lastCheckedNumber ?? data.header.returned.receiptFrom;
+    cache.write(`${scope}resume-number`, number);
+    setSelected(number);
+  }, [cache, data, selected, scope]);
+  const jumpNumber = /^\d+$/.test(jump) ? Number(jump) : 0;
+  const canJump = Boolean(data && Number.isSafeInteger(jumpNumber) && jumpNumber >= data.header.returned.receiptFrom && jumpNumber <= (data.header.returned.lastUsed ?? 0));
   const approved = record && data?.requests.some((row) => row.receiptId === record.id && row.requestedBy === account.id && row.status === "APPROVED" && row.baseVersion === record.version);
   const activeRequest = record && data?.requests.find((row) => row.receiptId === record.id && row.requestedBy === account.id && row.baseVersion === record.version && (row.status === "PENDING" || row.status === "APPROVED"));
   function changed(book: ReceiptBook, finalized = false) {
-    cache.updateQueries<ReceiptBook>(`${scope}query:`, (previous) => ({ ...previous, header: book.header, totals: book.totals,
-      checkedCount: book.checkedCount, requests: book.requests, issues: book.issues }));
-    cache.setQueryData(`${scope}query:${book.page}`, book);
+    const savedRows = new Map(book.rows.map((row) => [row.number, row]));
+    cache.updateQueries<ReceiptBook>(key, (previous) => ({ ...previous, header: book.header, totals: book.totals,
+      checkedCount: book.checkedCount, lastCheckedNumber: book.lastCheckedNumber, requests: book.requests, issues: book.issues,
+      rows: previous.rows.map((row) => savedRows.get(row.number) ?? row) }));
+    const checkpoint = book.lastCheckedNumber ?? book.header.returned.receiptFrom;
+    cache.write(`${scope}resume-number`, checkpoint);
     cache.invalidate(`${account.id}:receipts:queue:query:`); cache.invalidate(`${account.id}:returns:returned:`);
     if (finalized) {
       cache.invalidate(`${account.id}:returns:open:`); cache.invalidate(`${account.id}:assignments:query:`);
@@ -74,9 +92,10 @@ export function ReceiptBookScreen({ account, returnId }: { account: Account; ret
     }
   }
   function navigate(number: number, discard = false) {
-    if (!data || busy || finalizing) return;
+    if (!data || busy || finalizing || sending || !Number.isSafeInteger(number)
+      || number < data.header.returned.receiptFrom || number > (data.header.returned.lastUsed ?? 0) || number === current?.number) return;
     if (dirty && !discard) { setLeaving(number); return; }
-    setReady(false); setDirty(false); setSelected(number); setPage(Math.floor((number - data.header.returned.receiptFrom) / data.pageSize) + 1); setLeaving(null);
+    setDirty(false); setSelected(number); setLeaving(null); setJump("");
   }
   async function finalize() {
     if (!data || finalizing || dirty) return; setFinalizing(true); setError(null);
@@ -86,14 +105,17 @@ export function ReceiptBookScreen({ account, returnId }: { account: Account; ret
     } catch (failure) {
       setError(receiptError(failure));
       if (failure instanceof ReceiptRequestError && failure.number !== undefined) {
-        setReady(false); setSelected(failure.number); setPage(Math.floor((failure.number - data.header.returned.receiptFrom) / data.pageSize) + 1);
+        setDirty(false); setSelected(failure.number);
       }
     } finally { setFinalizing(false); setConfirm(false); }
   }
   async function requestWorkflow() {
     if (!mode || !current || reason.trim().length < 3 || sending) return; setSending(true); setError(null);
+    const flag = mode === "RAISE_ISSUE" ? RECEIPT_FLAG_OPTIONS.find((option) => option.code === flagReason) : undefined;
+    const requestReason = flag ? `${flag.nameEn}: ${reason.trim()}` : reason;
+    if ((mode === "RAISE_ISSUE" && !flag) || requestReason.length > 1000) { setSending(false); return; }
     try {
-      const result = receiptWorkflowSchema.parse(await receiptRequest("/api/v1/receipt-workflow", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: mode, returnId, number: current.number, reason }) }));
+      const result = receiptWorkflowSchema.parse(await receiptRequest("/api/v1/receipt-workflow", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: mode, returnId, number: current.number, reason: requestReason }) }));
       cache.updateQueries<ReceiptBook>(`${scope}query:`, (previous) => ({ ...previous, requests: result.data.requests, issues: result.data.issues }));
       cache.invalidate(`${account.id}:receipt-review:`); cache.invalidate(`${account.id}:flags:`);
       if (mode === "RAISE_ISSUE" && data?.header.finalized) cache.invalidate(`${scope}query:`);
@@ -102,10 +124,17 @@ export function ReceiptBookScreen({ account, returnId }: { account: Account; ret
   }
   const actions = data && <>
     {current && <>
-      <Button variant="outline" size="small" disabled={busy || sending} onClick={() => { setMode("RAISE_ISSUE"); setReason(""); }}><Flag size={14} />{t("returnsRaiseFlag")}</Button>
+      <Button variant="outline" size="small" disabled={busy || sending} onClick={() => { setMode("RAISE_ISSUE"); setFlagReason(""); setReason(""); }}><Flag size={14} />{t("returnsRaiseFlag")}</Button>
       {data.header.finalized && <Button variant="outline" size="small" disabled={busy || Boolean(activeRequest)} onClick={() => { setMode("REQUEST_EDIT"); setReason(""); }}>{t(approved ? "submissionEditApproved" : activeRequest ? "submissionEditPending" : "submissionRequestEdit")}</Button>}
-      <Button variant="outline" size="small" disabled={busy || current.number <= data.header.returned.receiptFrom} onClick={() => navigate(current.number - 1)}><ChevronLeft size={14} />{t("submissionPreviousReceipt")}</Button>
-      <Button size="small" disabled={busy || !ready || dirty || current.number >= (data.header.returned.lastUsed ?? 0)} onClick={() => navigate(current.number + 1)}>{t("submissionNextReceipt")}<ChevronRight size={14} /></Button>
+      <Button variant="outline" size="small" disabled={busy || finalizing || sending || current.number <= data.header.returned.receiptFrom} onClick={() => navigate(current.number - 1)}><ChevronLeft size={14} />{t("submissionPreviousReceipt")}</Button>
+      <Button size="small" disabled={busy || finalizing || sending || current.number >= (data.header.returned.lastUsed ?? 0)} onClick={() => navigate(current.number + 1)}>{t("submissionNextReceipt")}<ChevronRight size={14} /></Button>
+      <div className="flex items-center gap-1.5"><Input inputMode="numeric" maxLength={10} value={jump} aria-label={t("receiptNumber")}
+        placeholder={`${data.header.returned.receiptFrom}–${data.header.returned.lastUsed ?? data.header.returned.receiptFrom}`}
+        className="min-h-8 w-24 px-2 py-1 text-xs" disabled={busy || finalizing || sending}
+        onChange={(event) => setJump(event.target.value.replace(/\D/g, ""))}
+        onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); if (canJump) navigate(jumpNumber); } }} />
+        <Button variant="outline" size="small" disabled={!canJump || busy || finalizing || sending} onClick={() => navigate(jumpNumber)}>{t("submissionGoReceipt")}</Button>
+      </div>
     </>}
     {!data.header.finalized && <Button variant="outline" size="small" loading={finalizing} disabled={busy || dirty || data.checkedCount !== data.total} onClick={() => setConfirm(true)}>{t("submissionFinalize")}</Button>}
   </>;
@@ -137,16 +166,19 @@ export function ReceiptBookScreen({ account, returnId }: { account: Account; ret
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card">
           <div className="shrink-0 space-y-2 border-b border-border px-3 py-2"><div className="flex items-center justify-between gap-3 text-[11px]"><span className="font-semibold">{t("receiptEntry")}{current && ` · ${current.number}`}</span><div className="flex items-center gap-3"><span>{t("receiptEntered")}: <b>{data.totals.saved}/{data.total}</b> · {t("submissionChecked")}: <b>{data.checkedCount}/{data.total}</b></span><Badge tone={data.header.returned.receiptEntryStatus === "FLAGGED" ? "danger" : data.header.finalized ? "success" : "warning"}>{t(statusLabel(data.header))}</Badge></div></div>
             <div className="h-1 overflow-hidden rounded-full bg-accent"><div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${data.total === 0 ? 100 : data.checkedCount / data.total * 100}%` }} /></div></div>
-          <div className="min-h-0 flex-1">{current ? <ReceiptForm key={current.number} accountId={account.id} number={current.number} record={current.record} header={data.header} page={data.page} allowEdit={Boolean(approved)} onBusyChange={setBusy} onReadyChange={setReady} onDirtyChange={setDirty} actions={actions} messages={messages}
-            onSaved={(book) => { changed(book, data.header.finalized); setDirty(false); setNotice(data.header.finalized ? "submissionCorrectionSaved" : "receiptDraftSaved"); }} />
+          <div className="min-h-0 flex-1">{current ? <ReceiptForm key={current.number} accountId={account.id} number={current.number} record={current.record} header={data.header} totals={data.totals} donationCategories={donations.data?.categories ?? []} donationsLoading={!donations.data && (donations.loading || donations.stale)} donationError={donations.error} onRetryDonations={() => cache.invalidate(`${account.id}:masters:receipt-donations`)} page={Math.floor((current.number - data.header.returned.receiptFrom) / 20) + 1} allowEdit={Boolean(approved)} onBusyChange={setBusy} onDirtyChange={setDirty} actions={actions} messages={messages}
+            onSaved={(book) => { changed(book, data.header.finalized); setDirty(false);
+              const saved = book.rows.find((row) => row.number === current.number)?.record;
+              setNotice(saved?.checked && saved.values.status === "CANCELLED" ? "receiptCancelledSaved" : data.header.finalized ? "submissionCorrectionSaved" : "receiptDraftSaved"); }} />
             : <div className="flex h-full min-h-0 flex-col"><p className="min-h-0 flex-1 overflow-y-auto p-8 text-center text-sm text-muted-foreground">{t("receiptNoUsed")}</p><div className="flex shrink-0 justify-end border-t border-border bg-card p-3">{actions}</div></div>}</div>
         </div>
       </>}
     </div>
     <Dialog open={confirm} busy={finalizing} onOpenChange={setConfirm} title={t("submissionFinalize")} description={t("receiptFinalizeHelp")}><div className="flex justify-end pt-5"><Button loading={finalizing} onClick={() => { void finalize(); }}>{t("submissionFinalize")}</Button></div></Dialog>
     <Dialog open={mode !== null} busy={sending} onOpenChange={(open) => { if (!open) setMode(null); }} title={t(mode === "REQUEST_EDIT" ? "submissionRequestEdit" : "returnsRaiseFlag")} description={t("submissionReasonHelp")}>
+      {mode === "RAISE_ISSUE" && <div className="mt-4"><ReceiptOptionSelect label="flags" value={flagReason} onChange={setFlagReason} options={RECEIPT_FLAG_OPTIONS.map(({ code, ...labels }) => ({ id: code, ...labels }))} /></div>}
       <label className="mb-2 mt-4 block text-xs" htmlFor="workflow-reason">{t("submissionReason")}</label><textarea id="workflow-reason" rows={4} minLength={3} maxLength={1000} value={reason} onChange={(event) => setReason(event.target.value)} className="w-full rounded-xl border border-border bg-card p-3 text-sm" />
-      <div className="mt-4 flex justify-end"><Button loading={sending} disabled={reason.trim().length < 3} onClick={() => { void requestWorkflow(); }}>{t("submissionSend")}</Button></div></Dialog>
+      <div className="mt-4 flex justify-end"><Button loading={sending} disabled={reason.trim().length < 3 || (mode === "RAISE_ISSUE" && (!flagReason || reason.trim().length + (RECEIPT_FLAG_OPTIONS.find((option) => option.code === flagReason)?.nameEn.length ?? 0) + 2 > 1000))} onClick={() => { void requestWorkflow(); }}>{t("submissionSend")}</Button></div></Dialog>
     <Dialog open={leaving !== null} onOpenChange={(open) => { if (!open) setLeaving(null); }} title={t("submissionUnsaved")} description={t("submissionUnsavedHelp")}><div className="flex justify-end gap-2 pt-5"><Button variant="outline" onClick={() => setLeaving(null)}>{t("submissionStay")}</Button><Button onClick={() => { if (leaving !== null) navigate(leaving, true); }}>{t("submissionDiscard")}</Button></div></Dialog>
   </AppShell>;
 }

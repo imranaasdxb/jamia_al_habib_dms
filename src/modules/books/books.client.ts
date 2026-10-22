@@ -26,7 +26,8 @@ export function booksError(error: unknown): MessageKey {
     ASSIGNMENT_NOT_FOUND: "assignNotFound", ASSIGNMENTS_UNAVAILABLE: "assignFailed",
     RETURNS_UNAVAILABLE: "returnsFailed", RETURN_INVALID: "returnsInvalid", RETURN_MISMATCH: "returnsNeedsFlag",
     RETURN_NOT_OPEN: "returnsChanged", RETURN_CHANGED: "returnsChanged", LEFTOVER_SAME_FUNDRAISER: "leftoversSameFundraiser",
-    LEFTOVER_CHANGED: "leftoversChanged", LEFTOVERS_UNAVAILABLE: "leftoversFailed" };
+    BOOK_LOSS_SETUP_REQUIRED: "bookLossSetupRequired",
+    LEFTOVER_CHANGED: "leftoversChanged", LEFTOVERS_UNAVAILABLE: "leftoversFailed", LEFTOVER_FUNDRAISER_INELIGIBLE: "leftoversFundraiserIneligible" };
   return messages[code] ?? "booksFailed";
 }
 export const bookStatusLabels: Record<BookRow["status"], MessageKey> = { IN_STOCK: "booksInStock", ASSIGNED: "booksAssigned",

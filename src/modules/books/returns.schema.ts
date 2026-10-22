@@ -24,6 +24,10 @@ export const returnValuesSchema = z.strictObject({ caseId: z.uuid(), returnDate:
   }
 });
 export const returnSubmissionSchema = z.strictObject({ operationId: z.uuid(), values: returnValuesSchema });
+export const bookLossSubmissionSchema = z.strictObject({ action: z.literal("MARK_BOOK_LOST"), caseId: z.uuid(), reason: z.string().trim().min(3).max(1000) });
+export const bookLossResultSchema = z.object({ caseId: z.uuid(), bookId: z.uuid(), assignmentId: z.uuid() });
+export const bookLossResponseSchema = z.object({ data: bookLossResultSchema });
+export type BookLossSubmission = z.infer<typeof bookLossSubmissionSchema>;
 export const returnQuerySchema = z.object({ search: z.string().trim().max(100).default(""),
   collectorId: z.union([z.literal(""), z.uuid()]).default(""),
   overdue: z.enum(["ALL", "OVERDUE"]).default("ALL"),

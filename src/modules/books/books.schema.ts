@@ -43,6 +43,13 @@ export const booksQuerySchema = z.object({ search: z.string().trim().max(100).de
 export const booksResponseSchema = z.object({ data: z.array(bookRowSchema),
   meta: z.object({ total: z.number(), page: z.number(), pageSize: z.number() }) });
 export const booksSavedSchema = z.object({ data: z.object({ rows: z.array(bookRowSchema), replayed: z.boolean() }) });
+export const bookEntryQuerySchema = z.object({ page: z.coerce.number().int().min(1).max(100000).default(1) });
+export const bookEntryDataSchema = z.object({
+  rows: z.array(bookRowSchema.pick({ id: true, bookNumber: true, receiptFrom: true, receiptTo: true })),
+  latestId: z.uuid().nullable(), nextReceipt: z.number().int().min(1).max(2147483647).nullable(),
+  hasMore: z.boolean(),
+});
+export const bookEntryResponseSchema = z.object({ data: bookEntryDataSchema });
 export type SingleBookValues = z.infer<typeof singleBookSchema>;
 export type BulkBooksValues = z.infer<typeof bulkBooksSchema>;
 export type BookSubmission = z.infer<typeof bookSubmissionSchema>;

@@ -14,19 +14,19 @@ export function LogoutButton() {
   const [hasError, setHasError] = useState(false);
 
   async function logout() {
+    if (isPending) return;
     setIsPending(true);
     setHasError(false);
     try {
       const result = await authClient.signOut();
       if (result.error) {
         setHasError(true);
+        setIsPending(false);
         return;
       }
       router.replace("/login");
-      router.refresh();
     } catch {
       setHasError(true);
-    } finally {
       setIsPending(false);
     }
   }

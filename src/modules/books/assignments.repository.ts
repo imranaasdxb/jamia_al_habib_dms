@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import { and, asc, count, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
-import { bookAssignments, bookCases, books, leftoverBooks, masterRecords, people } from "@/lib/db/schema";
+import { bookAssignments, bookCases, books, collectors, leftoverBooks, masterRecords, people } from "@/lib/db/schema";
 import { AuthFailure } from "@/modules/auth/auth.types";
 import { withBooksDatabase } from "@/modules/books/books.repository";
 import { bookRowSchema } from "@/modules/books/books.schema";
@@ -76,10 +76,13 @@ export async function createAssignment(input: AssignmentSubmission) {
         eq(people.role, "COLLECTOR"), eq(people.status, "ACTIVE"), isNull(people.deletedAt))).limit(1);
       if (!fundraiser) throw new AuthFailure("ASSIGNMENT_FUNDRAISER", 409);
       if (values.source === "LEFTOVER") {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`dms:collector:${values.collectorId}`}))`);
+        const [eligible] = await tx.select({ allowed: collectors.leftoverEligible }).from(collectors)
+          .where(and(eq(collectors.personId, values.collectorId), isNull(collectors.deletedAt))).limit(1).for("share");
+        if (!eligible?.allowed) throw new AuthFailure("LEFTOVER_FUNDRAISER_INELIGIBLE", 409);
         const leftovers = await tx.select().from(leftoverBooks).where(and(inArray(leftoverBooks.id, values.leftoverIds), isNull(leftoverBooks.deletedAt)));
         if (leftovers.length !== values.bookIds.length || leftovers.some((row) => row.status !== "AVAILABLE" || !values.bookIds.includes(row.bookId))
           || new Set(leftovers.map((row) => row.bookId)).size !== values.bookIds.length) throw new AuthFailure("LEFTOVER_CHANGED", 409);
-        if (leftovers.some((row) => row.returnedBy === values.collectorId)) throw new AuthFailure("LEFTOVER_SAME_FUNDRAISER", 409);
       }
       const areas = await tx.select({ id: masterRecords.id, nameEn: masterRecords.nameEn, nameUr: masterRecords.nameUr }).from(masterRecords)
         .where(and(inArray(masterRecords.id, values.areaIds), eq(masterRecords.kind, "AREA"), eq(masterRecords.active, true), isNull(masterRecords.deletedAt)));

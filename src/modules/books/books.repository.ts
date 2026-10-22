@@ -5,7 +5,7 @@ import { getAccountContext } from "@/lib/auth/session";
 import { withRequestDatabase } from "@/lib/db";
 import { books, masterRecords, people } from "@/lib/db/schema";
 import { AuthFailure } from "@/modules/auth/auth.types";
-import { bookRowSchema, bulkBookRows } from "@/modules/books/books.schema";
+import { bookEntryDataSchema, bookRowSchema, bulkBookRows } from "@/modules/books/books.schema";
 import type { RequestDatabase } from "@/lib/db";
 import type { BookSubmission, BooksQuery, SingleBookValues } from "@/modules/books/books.schema";
 
@@ -26,6 +26,25 @@ export async function withBooksDatabase<T>(operation: (tx: RequestDatabase, acto
 }
 function serialize(row: typeof books.$inferSelect) { return bookRowSchema.parse({ ...row, updatedAt: row.updatedAt.toISOString() }); }
 const literalLike = (term: string) => `%${term.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
+export async function bookEntryContext(page: number) {
+  return withBooksDatabase(async (tx, actor) => {
+    if (actor.role === "COLLECTOR") throw new AuthFailure("ACCESS_DENIED");
+    const [result] = await tx.execute<{ data: unknown }>(sql`
+      select jsonb_build_object(
+        'rows', coalesce((select jsonb_agg(b order by b.created_at desc, b."receiptTo" desc, b.id desc) from (
+          select id, book_number as "bookNumber", receipt_from as "receiptFrom", receipt_to as "receiptTo", created_at
+          from public.books where deleted_at is null
+          order by created_at desc, receipt_to desc, id desc limit 25 offset ${(page - 1) * 24}
+        ) b), '[]'::jsonb),
+        'latestId', (select id from public.books where deleted_at is null order by created_at desc, receipt_to desc, id desc limit 1),
+        'nextReceipt', (select case when coalesce(max(receipt_to), 0) < 2147483647
+          then coalesce(max(receipt_to), 0) + 1 else null end from public.books),
+        'hasMore', false
+      ) as data`);
+    const data = bookEntryDataSchema.parse(result?.data);
+    return { ...data, rows: data.rows.slice(0, 24), hasMore: data.rows.length > 24 };
+  });
+}
 export async function listBooks(query: BooksQuery) {
   return withBooksDatabase(async (tx) => {
     const term = literalLike(query.search);

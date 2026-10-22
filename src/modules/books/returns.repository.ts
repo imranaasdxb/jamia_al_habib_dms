@@ -7,9 +7,9 @@ import { AuthFailure } from "@/modules/auth/auth.types";
 import { withBooksDatabase } from "@/modules/books/books.repository";
 import { bookRowSchema } from "@/modules/books/books.schema";
 import { assignmentRowSchema, indiaToday } from "@/modules/books/assignments.schema";
-import { openReturnCaseSchema, returnChecks, returnRowSchema } from "@/modules/books/returns.schema";
+import { bookLossResultSchema, openReturnCaseSchema, returnChecks, returnRowSchema } from "@/modules/books/returns.schema";
 import type { RequestDatabase } from "@/lib/db";
-import type { ReturnQuery, ReturnSubmission } from "@/modules/books/returns.schema";
+import type { BookLossSubmission, ReturnQuery, ReturnSubmission } from "@/modules/books/returns.schema";
 
 type ReturnErrorDetails = { stage?: string; sqlState?: string; object?: string; constraint?: string; function?: string; line?: number; fields?: string[];
   connection?: { host: string; database: string } };
@@ -136,5 +136,21 @@ export async function saveBookReturn(input: ReturnSubmission) {
     });
   } catch (error) {
     throw returnDatabaseFailure(error, stage);
+  }
+}
+
+export async function markAssignedBookLost(input: BookLossSubmission) {
+  try {
+    return await withBooksDatabase(async (tx) => {
+      const [row] = await tx.execute(sql`select public.mark_assigned_book_lost(${input.caseId}::uuid, ${input.reason}) as result`);
+      if (!row) throw new AuthFailure("RETURNS_UNAVAILABLE", 503);
+      return bookLossResultSchema.parse(row.result);
+    });
+  } catch (error) {
+    const failure = returnDatabaseFailure(error, "mark-book-lost");
+    if (failure instanceof ReturnFailure && ["42P01", "42703", "42883"].includes(failure.details?.sqlState ?? "")) {
+      throw new AuthFailure("BOOK_LOSS_SETUP_REQUIRED", 503);
+    }
+    throw failure;
   }
 }
