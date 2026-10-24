@@ -1,4 +1,5 @@
 "use client";
+import { sessionFetch } from "@/lib/auth/session-fetch";
 import { z } from "zod";
 import type { MessageKey } from "@/lib/i18n/messages";
 
@@ -8,7 +9,7 @@ class UserActionError extends Error {
   constructor(code: string, public readonly dataChanged = false) { super(code); }
 }
 export async function usersRequest(url: string, options?: RequestInit): Promise<unknown> {
-  const response = await fetch(url, { cache: "no-store", ...options });
+  const response = await sessionFetch(url, { cache: "no-store", ...options });
   const payload: unknown = await response.json();
   if (!response.ok) {
     const parsed = errorSchema.safeParse(payload);

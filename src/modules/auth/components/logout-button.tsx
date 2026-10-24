@@ -1,15 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth/client";
+import { usePageDataCache } from "@/components/page-data-provider";
 
 export function LogoutButton() {
   const { t } = useLanguage();
-  const router = useRouter();
+  const cache = usePageDataCache();
   const [isPending, setIsPending] = useState(false);
   const [hasError, setHasError] = useState(false);
 
@@ -24,7 +24,8 @@ export function LogoutButton() {
         setIsPending(false);
         return;
       }
-      router.replace("/login");
+      cache.clear();
+      window.location.replace("/login");
     } catch {
       setHasError(true);
       setIsPending(false);

@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { MasterForm } from "@/modules/masters/components/master-form";
+import { editionLabel } from "@/modules/masters/editions.schema";
 import { masterCategories, masterLevelLabels, mastersError, mastersRequest } from "@/modules/masters/masters.client";
 import { fixedMasterKinds, mastersResponseSchema } from "@/modules/masters/masters.schema";
 import type { MasterKind, MasterPage, MasterQuery, MasterRow, MasterValues } from "@/modules/masters/masters.schema";
@@ -33,7 +34,7 @@ const MasterTableRow = memo(function MasterTableRow({ row, onEdit, onView }: {
     <span className={"masters-secondary block mt-[5px] text-[length:11px] text-[color:var(--muted-foreground)]"} lang={language === "ur" ? "en" : "ur"} dir={language === "ur" ? "ltr" : "rtl"}>
       {language === "ur" ? row.nameEn : row.nameUr}</span></div></td>
     <td><bdi dir="ltr">{row.code}</bdi></td>
-    <td>{row.kind === "TOKEN_VALUE" ? `₹${row.tokenValue}` : row.kind === "EDITION" ? row.effectiveFrom
+    <td>{row.kind === "TOKEN_VALUE" ? `₹${row.tokenValue}` : row.kind === "EDITION" ? row.edition ? `${row.edition.printingYear} · ${row.edition.quantity} ${t("books")}` : "—"
       : row.kind === "BANK_ACCOUNT" ? `${parent} · •••• ${row.lastFour}`
       : row.kind === "DONATION_HEAD" ? <>{parent}{row.needsDetail && <span className={"masters-secondary block mt-[5px] text-[length:11px] text-[color:var(--muted-foreground)]"}>{t("mastersNeedsDetail")}</span>}</>
       : row.kind === "AREA" && row.level ? <>{t(masterLevelLabels[row.level])}{parent && <span className={"masters-secondary block mt-[5px] text-[length:11px] text-[color:var(--muted-foreground)]"}>{parent}</span>}</>
@@ -85,6 +86,11 @@ function MasterCategory({ kind, accountId }: { kind: MasterKind; accountId: stri
     }
     cache.invalidate(`${scope}query:${kind}:`);
     cache.invalidate(`${scope}options:${kind}:`);
+    if (kind === "EDITION") {
+      cache.invalidate(`${accountId}:books:query:`);
+      cache.invalidate(`${accountId}:books:entry-context:`);
+      cache.invalidate(`${accountId}:assignments:stock:`);
+    }
     if (kind === "DONATION_CATEGORY" || kind === "DONATION_HEAD") cache.invalidate(`${scope}receipt-donations`);
     if (kind === "AREA") cache.invalidate(`${accountId}:leftovers:options:`);
     if (kind === "BANK") cache.invalidate(`${scope}query:BANK_ACCOUNT:`);
@@ -116,7 +122,7 @@ function MasterCategory({ kind, accountId }: { kind: MasterKind; accountId: stri
     <Card className={"masters-table-card overflow-hidden [&_.table-container]:mt-0 [&_.masters-table_:is(th,_td)]:p-[16px] [&_.masters-table_:is(th,_td)]:text-start [&_.masters-table_:is(th,_td)]:align-middle [&_.masters-table_:is(th,_td)]:[overflow-wrap:anywhere] [&_.masters-table_:is(th,_td):first-child]:ps-[20px] [&_.masters-table_:is(th,_td):last-child]:pe-[20px] [&_.masters-table_thead_th]:bg-[var(--muted)] [&_.masters-table_thead_th]:text-[length:11px] [&_.masters-table_thead_th]:font-semibold [&_.masters-table_thead_th]:[border-bottom:1px_solid_var(--border)] [&_.masters-table_tbody_td]:text-[length:12px] [&_.masters-table_tbody_td]:leading-[1.6] [&_.masters-table_:is(th,_td):nth-child(4)]:text-center [&_.masters-table_:is(th,_td):nth-child(5)]:text-center"} aria-busy={loading}><div className={"table-container overflow-x-auto mt-[18px] [scrollbar-width:thin] [scrollbar-color:var(--emerald-300)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--emerald-300)]"}><table className={"data-table w-full border-collapse text-start [&_th]:text-[length:10px] [&_th]:text-[color:var(--muted-foreground)] [&_th]:font-normal [&_th]:text-start [&_th]:p-[0_8px_12px] [&_td]:[border-top:1px_solid_var(--border)] [&_td]:p-[13px_8px] [&_td]:text-[length:11px] [&_th:first-child]:ps-0 [&_td:first-child]:ps-0 [&_th:last-child]:pe-0 [&_td:last-child]:pe-0 [&_th.amount-cell]:text-end masters-table [table-layout:fixed] min-w-[880px] [&_tbody_tr:not(.masters-donation-group):hover]:bg-[var(--background)]"}>
       <colgroup><col className={"masters-col-name w-[38%]"} /><col className={"masters-col-code w-[20%]"} /><col className={"masters-col-details w-[20%]"} />
         <col className={"masters-col-status w-[10%]"} /><col className={"masters-col-actions w-[12%]"} /></colgroup>
-      <thead><tr><th scope="col">{t("mastersName")}</th><th scope="col">{t("mastersCode")}</th><th scope="col">{t("mastersDetails")}</th>
+      <thead><tr><th scope="col">{t("mastersName")}</th><th scope="col">{t(kind === "EDITION" ? "editionCode" : "mastersCode")}</th><th scope="col">{t("mastersDetails")}</th>
         <th scope="col">{t("status")}</th><th scope="col">{t("usersActions")}</th></tr></thead>
       <tbody>{data?.rows.map((row, index) => <Fragment key={row.id}>
         {kind === "DONATION_HEAD" && (index === 0 || data.rows[index - 1]?.parentId !== row.parentId)
@@ -129,33 +135,48 @@ function MasterCategory({ kind, accountId }: { kind: MasterKind; accountId: stri
       <div className={"header-actions flex items-center gap-[12px]"}><Button variant="outline" size="small" disabled={loading || data.page <= 1} onClick={() => setPage(data.page - 1)}>{t("usersPrevious")}</Button>
         <Button variant="outline" size="small" disabled={loading || data.page * data.pageSize >= data.total} onClick={() => setPage(data.page + 1)}>{t("usersNext")}</Button></div></div>}
     <Dialog open={open} busy={busy} onOpenChange={(value) => { if (!value) setOpen(false); }} title={t(editing ? "mastersEdit" : "mastersAdd")}
-      description={t("mastersFormHelp")} className={"masters-editor-dialog w-[min(760px,_calc(100vw_-_40px))]"}>
+      description={t(kind === "EDITION" ? "editionFormHelp" : "mastersFormHelp")} className={"masters-editor-dialog w-[min(760px,_calc(100vw_-_40px))]"}>
       {open && <MasterForm accountId={accountId} kind={kind} record={editing} onBusyChange={setBusy} onSaved={saved} />}
     </Dialog>
     <Dialog open={viewing !== null} onOpenChange={(value) => { if (!value) setViewing(null); }} title={t("mastersDetails")}
       description={t("mastersInactiveHint")} className={"masters-view-dialog w-[min(600px,_calc(100vw_-_40px))]"}>
       {viewing && <div className={"masters-view grid gap-[20px] pt-[24px] [&_dl]:m-0 [&_dl_>_div]:grid [&_dl_>_div]:grid-cols-[155px_minmax(0,_1fr)] [&_dl_>_div]:gap-[15px] [&_dl_>_div]:py-[13px] [&_dl_>_div]:[border-bottom:1px_solid_var(--border)] [&_dt]:text-[length:12px] [&_dt]:text-[color:var(--muted-foreground)] [&_dd]:m-0 [&_dd]:text-[length:12px] [&_dd]:whitespace-pre-wrap [&_dd]:[overflow-wrap:anywhere]"}><h3>{language === "ur" ? viewing.nameUr : viewing.nameEn}</h3>
-        <dl>{([["mastersCode", viewing.code], ["mastersNameEn", viewing.nameEn], ["mastersNameUr", viewing.nameUr],
-          ["status", t(viewing.active ? "usersActive" : "usersInactive")], ["mastersEffective", viewing.effectiveFrom],
+        <dl>{((viewing.kind === "EDITION" ? [
+          ["editionNumber", viewing.edition ? editionLabel(Number(viewing.edition.editionNumber)) : viewing.nameEn],
+          ["editionCode", viewing.edition?.editionCode ?? viewing.code],
+          ["editionBookType", viewing.edition ? t(viewing.edition.bookType === "TOKEN" ? "editionToken" : "editionGeneral") : ""],
+          ["editionPrintingYear", viewing.edition?.printingYear ?? ""],
+          ["editionTokenDistribution", viewing.edition?.bookType === "TOKEN" ? `₹10: ${viewing.edition.tokenTen} · ₹20: ${viewing.edition.tokenTwenty} · ₹50: ${viewing.edition.tokenFifty}` : ""],
+          ["editionPagesFrom", viewing.edition?.pagesFrom ?? ""], ["editionPagesTo", viewing.edition?.pagesTo ?? ""],
+          ["editionPagesPerBook", "50"], ["editionQuantity", viewing.edition ? String(viewing.edition.quantity) : ""],
+          ["editionPrinter", viewing.edition?.designedPrintedBy ?? ""],
+          ["status", t(viewing.active ? "usersActive" : "usersInactive")],
+        ] : [["mastersCode", viewing.code], ["mastersNameEn", viewing.nameEn], ["mastersNameUr", viewing.nameUr],
+          ["status", t(viewing.active ? "usersActive" : "usersInactive")],
           ["mastersAreaLevel", viewing.level ? t(masterLevelLabels[viewing.level]) : ""],
           [viewing.kind === "DONATION_HEAD" ? "mastersDonationCategory" : "mastersParent", language === "ur" ? viewing.parentNameUr : viewing.parentNameEn],
           ["mastersTokenRupees", viewing.tokenValue], ["mastersAccountName", viewing.accountName],
           ["mastersLastFour", viewing.lastFour], ["mastersUpiId", viewing.upiId],
-          ["mastersNeedsDetail", viewing.needsDetail ? t("mastersRequired") : ""], ["usersRemarks", viewing.notes]] as [MessageKey, string][])
+          ["mastersNeedsDetail", viewing.needsDetail ? t("mastersRequired") : ""], ["usersRemarks", viewing.notes]]) as [MessageKey, string][])
           .filter(([, value]) => value !== "").map(([label, value]) => <div key={label}><dt>{t(label)}</dt><dd>{value}</dd></div>)}</dl>
         <Button variant="outline" onClick={() => edit(viewing)}>{t("mastersEdit")}</Button></div>}
     </Dialog>
   </section>;
 }
 
-export function MastersScreen({ account }: { account: Account }) {
+export function MastersScreen({ account, editionOnly = false }: { account: Account; editionOnly?: boolean }) {
   const { t } = useLanguage();
-  const [selectedKind, setKind] = usePageState<MasterKind>(`${account.id}:masters:category`, "EDITION");
-  const kind = selectedKind === "DONATION_CATEGORY" ? "DONATION_HEAD" : selectedKind;
+  const [selectedKind, setKind] = usePageState<MasterKind>(`${account.id}:masters:category`, "BOOK_TYPE");
+  const kind = selectedKind === "EDITION" ? "BOOK_TYPE" : selectedKind === "DONATION_CATEGORY" ? "DONATION_HEAD" : selectedKind;
+  if (editionOnly) return <AppShell account={account} headerTitle="mastersEditions" sampleData={false} search="" onSearchChange={() => {}}>
+    <div className="mb-[22px]"><h1 className="text-[34px] font-bold tracking-[-1.3px] [html[lang='ur']_&]:tracking-normal">{t("mastersEditions")}</h1>
+      <p className="mt-2 text-[var(--muted-foreground)]">{t("editionFormHelp")}</p></div>
+    <MasterCategory key="EDITION" accountId={account.id} kind="EDITION" />
+  </AppShell>;
   return <AppShell account={account} headerTitle="masters" sampleData={false} search="" onSearchChange={() => {}}>
     <div className={"page-header flex justify-between items-center gap-[20px] mb-[22px]"}><div><h1 className={"page-title text-[length:34px] font-bold tracking-[-1.3px] [html[lang='ur']_&]:tracking-0"}>{t("masters")}</h1><p className={"page-subtitle text-[color:var(--muted-foreground)] mt-[7px]"}>{t("mastersDescription")}</p></div></div>
     <div className={"masters-layout grid grid-cols-[195px_minmax(0,_1fr)] gap-[24px] items-start max-[1100px]:grid-cols-[165px_minmax(0,_1fr)] max-[1100px]:gap-[16px] max-[700px]:grid-cols-[1fr]"}><nav className={"masters-categories grid gap-[5px] p-[10px] bg-[var(--card)] [border:1px_solid_var(--border)] rounded-[var(--radius)] max-[700px]:grid-cols-[repeat(2,_minmax(0,_1fr))]"} aria-label={t("mastersCategories")}>
-      {masterCategories.map((category) => <button key={category.kind} type="button" className={"masters-category-button [border:0] bg-[transparent] text-[color:var(--muted-foreground)] [font:inherit] text-[length:12px] text-start p-[13px_12px] rounded-[var(--radius-control)] cursor-pointer [&:hover]:bg-[var(--muted)] [&[aria-current='true']]:bg-[var(--accent)] [&[aria-current='true']]:text-[color:var(--primary)] [&[aria-current='true']]:font-semibold"}
+      {masterCategories.filter((category) => category.kind !== "EDITION").map((category) => <button key={category.kind} type="button" className={"masters-category-button [border:0] bg-[transparent] text-[color:var(--muted-foreground)] [font:inherit] text-[length:12px] text-start p-[13px_12px] rounded-[var(--radius-control)] cursor-pointer [&:hover]:bg-[var(--muted)] [&[aria-current='true']]:bg-[var(--accent)] [&[aria-current='true']]:text-[color:var(--primary)] [&[aria-current='true']]:font-semibold"}
         aria-current={kind === category.kind ? "true" : undefined} onClick={() => setKind(category.kind)}>{t(category.label)}</button>)}
     </nav><MasterCategory key={kind} accountId={account.id} kind={kind} /></div>
   </AppShell>;

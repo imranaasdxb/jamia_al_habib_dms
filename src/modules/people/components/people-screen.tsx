@@ -112,6 +112,7 @@ export function PeopleScreen({ account }: { account: Account }) {
     })).data;
     cache.updateQueries<CollectorPage>(`${scope}query:`, (previous) => ({ ...previous,
       collectors: previous.collectors.map((row) => row.id === updated.id ? updated : row) }));
+    cache.invalidate(`${scope}query:assignment-options:`);
     cache.invalidate(`${scope}eligible:query:`);
     cache.invalidate(`${account.id}:leftovers:options:`);
     setViewing((previous) => previous?.id === updated.id ? updated : previous);

@@ -93,7 +93,12 @@ export const masterRecords = pgTable("master_records", {
   code: text("code").notNull(), nameEn: text("name_en").notNull(), nameUr: text("name_ur").notNull(),
   active: boolean("active").notNull().default(true), builtIn: boolean("built_in").notNull().default(false),
   sortOrder: integer("sort_order").notNull().default(1000),
-  notes: text("notes").notNull().default(""), effectiveFrom: date("effective_from"),
+  notes: text("notes").notNull().default(""),
+  editionCode: text("edition_code"), editionNumber: integer("edition_number"),
+  editionBookType: text("edition_book_type", { enum: ["REGULAR", "TOKEN"] }),
+  editionTokenBooks: jsonb("edition_token_books").$type<{ "10": number; "20": number; "50": number }>(), printingYear: integer("printing_year"),
+  pagesFrom: integer("pages_from"), pagesTo: integer("pages_to"), pagesPerBook: integer("pages_per_book"),
+  bookQuantity: integer("book_quantity"), designedPrintedBy: text("designed_printed_by"),
   needsDetail: boolean("needs_detail").notNull().default(false),
   level: text("level", { enum: ["STATE", "DISTRICT", "BLOCK", "VILLAGE"] }),
   parentId: uuid("parent_id").references((): AnyPgColumn => masterRecords.id, { onDelete: "restrict" }),
@@ -106,6 +111,7 @@ export const masterRecords = pgTable("master_records", {
 
 export const books = pgTable("books", {
   id: uuid("id").primaryKey().defaultRandom(), bookNumber: text("book_number").notNull().unique(),
+  editionBookNumber: integer("edition_book_number"),
   stockDate: date("stock_date").notNull(), editionId: uuid("edition_id").notNull().references(() => masterRecords.id, { onDelete: "restrict" }),
   editionNameEn: text("edition_name_en").notNull(), editionNameUr: text("edition_name_ur").notNull(),
   bookType: text("book_type", { enum: ["REGULAR", "TOKEN"] }).notNull(), tokenValuePaise: integer("token_value_paise"),

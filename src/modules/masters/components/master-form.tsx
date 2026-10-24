@@ -6,12 +6,18 @@ import { useLanguage } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import { AuthField } from "@/modules/auth/components/auth-field";
 import { MasterParentSelect } from "@/modules/masters/components/master-parent-select";
+import { EditionForm } from "@/modules/masters/components/edition-form";
 import { masterDefaults, masterLevelLabels, mastersError, mastersRequest } from "@/modules/masters/masters.client";
 import { masterEditorSchema, masterSaveResponseSchema, masterValuesSchema } from "@/modules/masters/masters.schema";
 import type { MasterKind, MasterRow, MasterValues } from "@/modules/masters/masters.schema";
 import type { MessageKey } from "@/lib/i18n/messages";
 
-export function MasterForm({ accountId, kind, record, onBusyChange, onSaved }: {
+export function MasterForm(props: {
+  accountId: string; kind: MasterKind; record?: MasterRow; onBusyChange: (busy: boolean) => void; onSaved: (record: MasterRow) => void;
+}) {
+  return props.kind === "EDITION" ? <EditionForm {...props} /> : <GeneralMasterForm {...props} />;
+}
+function GeneralMasterForm({ accountId, kind, record, onBusyChange, onSaved }: {
   accountId: string; kind: MasterKind; record?: MasterRow; onBusyChange: (busy: boolean) => void; onSaved: (record: MasterRow) => void;
 }) {
   const { t, language } = useLanguage();
@@ -19,7 +25,7 @@ export function MasterForm({ accountId, kind, record, onBusyChange, onSaved }: {
   const [error, setError] = useState<MessageKey | null>(null);
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting, isDirty, isValid } } = useForm<MasterValues>({
     resolver: zodResolver(masterEditorSchema(kind)), mode: "onChange",
-    defaultValues: record ? masterValuesSchema.strip().parse(record) : masterDefaults(kind),
+    defaultValues: record ? masterValuesSchema.strip().parse({ ...record, edition: record.edition ?? null }) : masterDefaults(kind),
   });
   const level = watch("level");
   const parentId = watch("parentId");
@@ -45,8 +51,6 @@ export function MasterForm({ accountId, kind, record, onBusyChange, onSaved }: {
           error={errors.nameEn ? t("mastersInvalidField") : undefined} {...register("nameEn")} />
         <AuthField id="master-name-ur" label={t("mastersNameUr")} required maxLength={120} dir="rtl" lang="ur"
           error={errors.nameUr ? t("mastersInvalidField") : undefined} {...register("nameUr")} />
-        {kind === "EDITION" && <AuthField id="master-effective" label={t("mastersEffective")} type="date" required
-          error={errors.effectiveFrom ? t("mastersInvalidField") : undefined} {...register("effectiveFrom")} />}
         {kind === "TOKEN_VALUE" && <AuthField id="master-token" label={t("mastersTokenRupees")} readOnly {...register("tokenValue")} />}
         {kind === "AREA" && <div><label className={"field-label block text-[length:12px] font-semibold mb-[8px]"} htmlFor="master-area-level">{t("mastersAreaLevel")} *</label>
           {record ? <><input id="master-area-level" className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} readOnly value={level ? t(masterLevelLabels[level]) : ""} />

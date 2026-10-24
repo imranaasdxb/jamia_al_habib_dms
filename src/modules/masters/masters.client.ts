@@ -16,15 +16,16 @@ export const masterLevelLabels: Record<Exclude<MasterValues["level"], "">, Messa
 };
 export function masterDefaults(kind: MasterKind): MasterValues {
   return { code: "", nameEn: "", nameUr: "", active: true, notes: "", needsDetail: false,
-    effectiveFrom: kind === "EDITION" ? new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10) : "",
+    edition: null,
     level: kind === "AREA" ? "STATE" : "", parentId: "", tokenValue: "", accountName: "", lastFour: "", upiId: "" };
 }
 export const mastersRequest = usersRequest;
 export function mastersError(error: unknown): MessageKey {
   const code = error instanceof Error ? error.message : "";
-  const messages: Record<string, MessageKey> = { MASTER_EXISTS: "mastersDuplicate", ACCESS_DENIED: "authDenied",
+  const messages: Record<string, MessageKey> = { EDITION_STOCK_LOCKED: "editionStockLocked", EDITION_STOCK_CONFLICT: "editionStockConflict",
+    EDITION_TOKEN_REQUIRED: "editionTokenRequired", EDITION_RANGE_CONTINUITY: "editionContinuity", MASTER_EXISTS: "mastersDuplicate", ACCESS_DENIED: "authDenied",
     SESSION_EXPIRED: "authExpired", INVALID_INPUT: "mastersInvalid", MASTER_FIXED: "mastersFixed",
     MASTER_PARENT: "mastersInvalidParent", MASTER_HAS_CHILDREN: "mastersHasChildren",
-    STALE_MASTER: "mastersStale", MASTER_NOT_FOUND: "mastersNotFound" };
+    STALE_MASTER: "mastersStale", MASTER_NOT_FOUND: "mastersNotFound", MASTER_EDITION_SETUP_REQUIRED: "editionSetupRequired" };
   return messages[code] ?? "mastersFailed";
 }

@@ -1,4 +1,5 @@
 "use client";
+import { sessionFetch } from "@/lib/auth/session-fetch";
 
 import { useCallback, useState } from "react";
 import { Plus, RefreshCw, Search, SlidersHorizontal, Users } from "lucide-react";
@@ -42,7 +43,7 @@ export function UsersScreen({ account }: { account: Account }) {
   const [formBusy, setFormBusy] = useState(false);
   const key = new URLSearchParams({ search: search.trim(), role, page: String(page) }).toString();
   const fetchUsers = useCallback(async () => {
-    const response = await fetch(`/api/v1/users?${key}`, { cache: "no-store" });
+    const response = await sessionFetch(`/api/v1/users?${key}`, { cache: "no-store" });
     if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "authDenied" : "usersLoadFailed");
     const payload = usersResponseSchema.parse(await response.json());
     return { users: payload.data, ...payload.meta };

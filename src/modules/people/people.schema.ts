@@ -25,9 +25,20 @@ export const collectorRowSchema = collectorValuesSchema.extend({
   id: z.uuid(), code: z.string(), updatedAt: z.iso.datetime(), hasPhoto: z.boolean(),
   leftoverEligible: z.boolean(),
 });
+export const collectorAssignmentOptionSchema = collectorRowSchema.pick({
+  id: true, fullName: true, code: true, age: true, village: true, commission: true,
+  status: true, hasPhoto: true, leftoverEligible: true,
+}).extend({ photoVersion: z.iso.datetime() });
+export const collectorAssignmentOptionsSchema = z.object({
+  data: z.array(collectorAssignmentOptionSchema),
+  meta: z.object({ total: z.number(), page: z.number(), pageSize: z.number() }),
+});
+export type CollectorAssignmentOption = z.infer<typeof collectorAssignmentOptionSchema>;
+
 export const collectorEligibilitySchema = z.strictObject({ leftoverEligible: z.boolean(), version: z.iso.datetime() });
 export const collectorEligibilityResponseSchema = z.object({ data: collectorRowSchema });
 export const collectorQuerySchema = z.object({
+  view: z.enum(["FULL", "ASSIGNMENT"]).default("FULL"),
   search: z.string().trim().max(100).default(""),
   status: z.enum(["ALL", "ACTIVE", "INACTIVE", "BLOCKED"]).default("ALL"),
   area: z.string().trim().max(100).default(""),

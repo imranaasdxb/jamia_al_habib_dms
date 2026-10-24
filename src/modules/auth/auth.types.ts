@@ -4,7 +4,6 @@ export interface Account {
   email: string;
   role: "ADMIN" | "STAFF";
   language: "en" | "ur";
-  sessionTimeoutMinutes: number;
   hasPhoto?: boolean;
 }
 

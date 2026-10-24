@@ -1,4 +1,5 @@
 "use client";
+import { sessionFetch } from "@/lib/auth/session-fetch";
 import { z } from "zod";
 import type { BookRow, SingleBookValues } from "@/modules/books/books.schema";
 import type { MessageKey } from "@/lib/i18n/messages";
@@ -8,7 +9,7 @@ export class BookRequestError extends Error {
   constructor(code: string, public readonly bookNumber?: string) { super(code); }
 }
 export async function booksRequest(url: string, options?: RequestInit): Promise<unknown> {
-  const response = await fetch(url, { cache: "no-store", ...options });
+  const response = await sessionFetch(url, { cache: "no-store", ...options });
   const payload: unknown = await response.json();
   if (!response.ok) {
     const failure = failureSchema.safeParse(payload);
@@ -21,7 +22,7 @@ export function booksError(error: unknown): MessageKey {
   const code = error instanceof Error ? error.message : "";
   const messages: Record<string, MessageKey> = { ACCESS_DENIED: "authDenied", SESSION_EXPIRED: "authExpired", INVALID_INPUT: "booksInvalid",
     BOOK_NUMBER_EXISTS: "booksDuplicate", RECEIPT_RANGE_USED: "booksOverlap", BOOK_EDITION_INVALID: "booksEditionInvalid",
-    BOOK_OPTION_INACTIVE: "booksInactiveOption", BOOK_OPERATION_CHANGED: "booksOperationChanged",
+    BOOKS_EDITION_SETUP_REQUIRED: "booksEditionSetupRequired", BOOK_OPTION_INACTIVE: "booksInactiveOption", BOOK_OPERATION_CHANGED: "booksOperationChanged",
     ASSIGNMENT_FUNDRAISER: "assignFundraiserInactive", ASSIGNMENT_AREAS: "assignAreasInactive", ASSIGNMENT_CHANGED: "assignChanged",
     ASSIGNMENT_NOT_FOUND: "assignNotFound", ASSIGNMENTS_UNAVAILABLE: "assignFailed",
     RETURNS_UNAVAILABLE: "returnsFailed", RETURN_INVALID: "returnsInvalid", RETURN_MISMATCH: "returnsNeedsFlag",

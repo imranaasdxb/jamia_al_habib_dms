@@ -32,14 +32,14 @@ export const bookSubmissionSchema = z.discriminatedUnion("mode", [
   z.strictObject({ mode: z.literal("BULK"), operationId: z.uuid(), values: bulkBooksSchema }),
 ]);
 export const BOOK_STATUSES = ["IN_STOCK", "ASSIGNED", "FLAGGED", "CLOSED", "PARTLY_USED", "LEFTOVER_ASSIGNED", "LOST"] as const;
-export const bookRowSchema = z.object({ id: z.uuid(), bookNumber: z.string(), stockDate: z.iso.date(), editionId: z.uuid(),
+export const bookRowSchema = z.object({ id: z.uuid(), bookNumber: z.string(), editionBookNumber: z.number().int().positive().nullable().default(null), stockDate: z.iso.date(), editionId: z.uuid(),
   editionNameEn: z.string(), editionNameUr: z.string(), bookType: z.enum(["REGULAR", "TOKEN"]),
   tokenValuePaise: z.number().int().nullable(), receiptFrom: z.number().int(), receiptTo: z.number().int(),
   totalReceipts: z.number().int(), faceValuePaise: z.number().int().nullable(), status: z.enum(BOOK_STATUSES),
   remarks: z.string(), entryByName: z.string(), updatedAt: z.iso.datetime() });
 export const booksQuerySchema = z.object({ search: z.string().trim().max(100).default(""),
   editionId: z.union([z.literal(""), z.uuid()]).default(""), bookType: z.enum(["ALL", "REGULAR", "TOKEN"]).default("ALL"),
-  tokenValue: z.enum(["", "10", "20", "50"]).default(""), page: z.coerce.number().int().min(1).max(100000).default(1) });
+  tokenValue: z.enum(["", "10", "20", "50", "100"]).default(""), page: z.coerce.number().int().min(1).max(100000).default(1) });
 export const booksResponseSchema = z.object({ data: z.array(bookRowSchema),
   meta: z.object({ total: z.number(), page: z.number(), pageSize: z.number() }) });
 export const booksSavedSchema = z.object({ data: z.object({ rows: z.array(bookRowSchema), replayed: z.boolean() }) });

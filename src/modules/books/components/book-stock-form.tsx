@@ -82,11 +82,11 @@ export function BookStockForm({ account, mode, onBusyChange, onSaved }: {
       {stock.error != null && <p className="text-xs text-[var(--danger)]" role="alert">{t(booksError(stock.error))}</p>}
       {stock.data && <>
         <div tabIndex={0} aria-label={t("booksExistingStock")} className="flex flex-nowrap gap-2 overflow-x-auto overflow-y-hidden p-0.5 pb-2 [scrollbar-width:thin] [scrollbar-color:var(--emerald-300)_transparent] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--emerald-300)]">
-          {stock.data.rows.map((book) => <div key={book.id} className={`relative min-w-36 shrink-0 whitespace-nowrap rounded-lg border px-3 pb-2 pt-4 ${book.id === stock.data.latestId
+          {stock.data.rows.map((book) => <div key={book.id} className={`relative min-w-36 shrink-0 whitespace-nowrap rounded-lg border px-3 pb-2 pt-4 ${book.id === stock.data?.latestId
             ? "border-[var(--primary)] bg-[var(--primary-soft)] text-[var(--primary)]"
             : "border-[var(--border)] bg-[var(--card)]"}`}>
             <bdi className="block text-xs font-semibold">{book.bookNumber}</bdi>
-            {book.id === stock.data.latestId && <span className="absolute end-1 top-0.5 rounded-full bg-[var(--primary)] px-1.5 text-[8px] leading-3 text-[var(--primary-foreground)]">{t("booksLatestAdded")}</span>}
+            {book.id === stock.data?.latestId && <span className="absolute end-1 top-0.5 rounded-full bg-[var(--primary)] px-1.5 text-[8px] leading-3 text-[var(--primary-foreground)]">{t("booksLatestAdded")}</span>}
             <p className="mt-1 text-[10px] text-[var(--muted-foreground)]" aria-label={`${t("booksReceiptFrom")} ${book.receiptFrom}, ${t("booksReceiptTo")} ${book.receiptTo}`}>
               {t("booksReceiptFrom")} <bdi>{book.receiptFrom} – {book.receiptTo}</bdi>
             </p>

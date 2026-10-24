@@ -7,10 +7,9 @@ import { AuthFailure } from "@/modules/auth/auth.types";
 import type { RequestDatabase } from "@/lib/db";
 import type { SaveSettingsValues } from "@/modules/settings/settings.schema";
 
-const columns = { sessionTimeoutMinutes: appSettings.sessionTimeoutMinutes,
-  defaultReturnMonths: appSettings.defaultReturnMonths, updatedAt: appSettings.updatedAt };
+const columns = { defaultReturnMonths: appSettings.defaultReturnMonths, updatedAt: appSettings.updatedAt };
 const singleton = and(eq(appSettings.slot, 1), isNull(appSettings.deletedAt));
-const serialize = (row: { sessionTimeoutMinutes: number; defaultReturnMonths: number; updatedAt: Date }) =>
+const serialize = (row: { defaultReturnMonths: number; updatedAt: Date }) =>
   ({ ...row, updatedAt: row.updatedAt.toISOString() });
 
 async function withSettingsAdmin<T>(operation: (transaction: RequestDatabase, actorId: string) => Promise<T>) {
@@ -44,12 +43,10 @@ export async function saveSettings(input: SaveSettingsValues) {
       .where(singleton).limit(1).for("update");
     if (!previous) throw new AuthFailure("SETTINGS_UNAVAILABLE", 503);
     if (previous.updatedAt.toISOString() !== input.version) throw new AuthFailure("STALE_SETTINGS", 409);
-    const oldValues = serialize({ sessionTimeoutMinutes: previous.sessionTimeoutMinutes,
-      defaultReturnMonths: previous.defaultReturnMonths, updatedAt: previous.updatedAt });
-    if (previous.sessionTimeoutMinutes === input.sessionTimeoutMinutes
-      && previous.defaultReturnMonths === input.defaultReturnMonths) return oldValues;
+    const oldValues = serialize({ defaultReturnMonths: previous.defaultReturnMonths, updatedAt: previous.updatedAt });
+    if (previous.defaultReturnMonths === input.defaultReturnMonths) return oldValues;
     const [updated] = await transaction.update(appSettings).set({
-      sessionTimeoutMinutes: input.sessionTimeoutMinutes, defaultReturnMonths: input.defaultReturnMonths,
+      defaultReturnMonths: input.defaultReturnMonths,
       updatedAt: new Date(), updatedBy: actorId,
     }).where(eq(appSettings.id, previous.id)).returning(columns);
     if (!updated) throw new AuthFailure("SETTINGS_UNAVAILABLE", 503);

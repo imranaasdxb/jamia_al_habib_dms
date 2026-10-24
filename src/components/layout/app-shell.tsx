@@ -10,7 +10,6 @@ import {
 import { LanguageSwitch, useLanguage } from "@/components/language-provider";
 import { usePageState } from "@/components/page-data-provider";
 import { Brand } from "@/components/layout/brand";
-import { SessionActivity } from "@/components/layout/session-activity";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -89,7 +88,6 @@ export function AppShell({ children, search, onSearchChange, account,
 
   return (
     <div className={"app-shell min-w-[1366px] min-h-[100vh]"}>
-      <SessionActivity timeoutMinutes={account.sessionTimeoutMinutes} accountId={account.id} />
       <aside className={"sidebar w-[var(--sidebar-width)] fixed inset-y-0 start-0 p-[28px_18px] bg-[var(--card)] [border-inline-end:1px_solid_var(--border)] flex flex-col z-[20] [&_.brand]:mx-[8px] [&_.brand]:mb-[35px]"}>
         <Link href="/dashboard" aria-label={t("dashboard")}><Brand /></Link>
         <nav className={"sidebar-nav flex flex-col gap-[8px]"} aria-label={t("donationManagement")}>
@@ -116,6 +114,7 @@ export function AppShell({ children, search, onSearchChange, account,
                 <ChevronDown size={16} className={"nav-group-chevron [transition:transform_.15s_ease]"} aria-hidden="true" />
               </button>
               <div id={booksSubmenuId} className={"nav-submenu flex flex-col gap-[4px] my-[5px] ms-[25px] ps-[12px] [border-inline-start:1px_solid_var(--border)] [&[hidden]]:hidden [&_.nav-item]:min-h-[39px] [&_.nav-item]:text-[length:12px] [&_.nav-item]:px-[13px]"} hidden={!booksExpanded}>
+                {account.role === "ADMIN" && <Link className={"nav-item flex items-center gap-[15px] w-full min-h-[48px] [border:0] p-[10px_16px] rounded-[var(--radius-control)] text-start bg-[transparent] text-[color:var(--muted-foreground)] [&:hover]:bg-[var(--muted)] [&[aria-current='page']]:text-[color:var(--primary-hover)] [&[aria-current='page']]:bg-[var(--accent)] [&[aria-current='page']]:font-semibold"} href="/books/editions" aria-current={pathname === "/books/editions" ? "page" : undefined}>{t("mastersEditions")}</Link>}
                 <Link className={"nav-item flex items-center gap-[15px] w-full min-h-[48px] [border:0] p-[10px_16px] rounded-[var(--radius-control)] text-start bg-[transparent] text-[color:var(--muted-foreground)] [&:hover]:bg-[var(--muted)] [&[aria-current='page']]:text-[color:var(--primary-hover)] [&[aria-current='page']]:bg-[var(--accent)] [&[aria-current='page']]:font-semibold"} href="/books" aria-current={pathname === "/books" ? "page" : undefined}>{t("booksStock")}</Link>
                 <Link className={"nav-item flex items-center gap-[15px] w-full min-h-[48px] [border:0] p-[10px_16px] rounded-[var(--radius-control)] text-start bg-[transparent] text-[color:var(--muted-foreground)] [&:hover]:bg-[var(--muted)] [&[aria-current='page']]:text-[color:var(--primary-hover)] [&[aria-current='page']]:bg-[var(--accent)] [&[aria-current='page']]:font-semibold"} href="/books/assignments" aria-current={pathname === "/books/assignments" ? "page" : undefined}>{t("assignBooks")}</Link>
                 <Link className={"nav-item flex items-center gap-[15px] w-full min-h-[48px] [border:0] p-[10px_16px] rounded-[var(--radius-control)] text-start bg-[transparent] text-[color:var(--muted-foreground)] [&:hover]:bg-[var(--muted)] [&[aria-current='page']]:text-[color:var(--primary-hover)] [&[aria-current='page']]:bg-[var(--accent)] [&[aria-current='page']]:font-semibold"} href="/books/returns" aria-current={(pathname === "/books/returns" || pathname.startsWith("/receipt-entry")) ? "page" : undefined}>{t("returnsScreen")}</Link>

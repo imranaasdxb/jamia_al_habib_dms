@@ -20,7 +20,7 @@ async function detail(tx: RequestDatabase, id: string) {
   if (!record) throw new AuthFailure("ASSIGNMENT_NOT_FOUND", 404);
   const rows = await tx.select({ book: books, closedAt: bookCases.closedAt, assignedFrom: bookCases.receiptFrom, assignedTo: bookCases.receiptTo,
     source: bookCases.source, sourceCode: bookCases.sourceCode }).from(bookCases)
-    .innerJoin(books, eq(books.id, bookCases.bookId)).where(eq(bookCases.assignmentId, id)).orderBy(asc(books.bookNumber), asc(books.id));
+    .innerJoin(books, eq(books.id, bookCases.bookId)).where(eq(bookCases.assignmentId, id)).orderBy(asc(books.receiptFrom), asc(books.id));
   return { assignment: serialize(record.assignment, record.openCount), books: rows.map(({ book, closedAt, ...range }) => ({ ...range,
     ...bookRowSchema.parse({ ...book, updatedAt: book.updatedAt.toISOString() }), closedAt: closedAt?.toISOString() ?? null,
   })) };
@@ -56,7 +56,7 @@ export async function availableBooks(search: string, assignmentDate: string, pag
     const [result] = await tx.select({ total: count() }).from(books).where(where);
     const total = result?.total ?? 0; const pageSize = 20;
     const currentPage = Math.min(page, Math.max(1, Math.ceil(total / pageSize)));
-    const rows = await tx.select().from(books).where(where).orderBy(asc(books.bookNumber), asc(books.id)).limit(pageSize).offset((currentPage - 1) * pageSize);
+    const rows = await tx.select().from(books).where(where).orderBy(asc(books.receiptFrom), asc(books.id)).limit(pageSize).offset((currentPage - 1) * pageSize);
     return { rows: rows.map((row) => bookRowSchema.parse({ ...row, updatedAt: row.updatedAt.toISOString() })), total, page: currentPage, pageSize };
   });
 }

@@ -1,11 +1,12 @@
 "use client";
+import { sessionFetch } from "@/lib/auth/session-fetch";
 import { z } from "zod";
 import type { MessageKey } from "@/lib/i18n/messages";
 
 const failureSchema = z.object({ error: z.object({ code: z.string(), receiptNumber: z.number().optional() }) });
 export class ReceiptRequestError extends Error { constructor(code: string, public readonly number?: number) { super(code); } }
 export async function receiptRequest(url: string, options?: RequestInit): Promise<unknown> {
-  const response = await fetch(url, { cache: "no-store", ...options }); const payload: unknown = await response.json();
+  const response = await sessionFetch(url, { cache: "no-store", ...options }); const payload: unknown = await response.json();
   if (!response.ok) { const parsed = failureSchema.safeParse(payload); throw new ReceiptRequestError(parsed.success ? parsed.data.error.code : "RECEIPTS_UNAVAILABLE", parsed.success ? parsed.data.error.receiptNumber : undefined); }
   return payload;
 }

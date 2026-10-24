@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { and, asc, count, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, count, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { getAccountContext } from "@/lib/auth/session";
 import { withRequestDatabase } from "@/lib/db";
 import { books, masterRecords, people } from "@/lib/db/schema";
@@ -58,7 +58,7 @@ export async function listBooks(query: BooksQuery) {
     const total = result?.total ?? 0;
     const pageSize = 20;
     const page = Math.min(query.page, Math.max(1, Math.ceil(total / pageSize)));
-    const rows = await tx.select().from(books).where(where).orderBy(desc(books.createdAt), asc(books.bookNumber), asc(books.id))
+    const rows = await tx.select().from(books).where(where).orderBy(asc(books.receiptFrom), asc(books.id))
       .limit(pageSize).offset((page - 1) * pageSize);
     return { rows: rows.map(serialize), total, page, pageSize };
   });
@@ -95,7 +95,7 @@ export async function addBookStock(input: BookSubmission) {
         first.bookType === "TOKEN" ? and(eq(masterRecords.kind, "TOKEN_VALUE"), eq(masterRecords.tokenValueRupees, Number(first.tokenValue))) : undefined,
       ))).for("share");
       const edition = masters.find((row) => row.id === first.editionId && row.kind === "EDITION");
-      if (!edition || !edition.effectiveFrom || edition.effectiveFrom > first.stockDate) throw new AuthFailure("BOOK_EDITION_INVALID", 409);
+      if (!edition) throw new AuthFailure("BOOK_EDITION_INVALID", 409);
       if (!masters.some((row) => row.kind === "BOOK_TYPE" && row.code === first.bookType)
         || (first.bookType === "TOKEN" && !masters.some((row) => row.kind === "TOKEN_VALUE" && row.tokenValueRupees === Number(first.tokenValue)))) {
         throw new AuthFailure("BOOK_OPTION_INACTIVE", 409);

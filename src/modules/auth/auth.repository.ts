@@ -3,7 +3,7 @@ import { createHmac, randomBytes } from "node:crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { getServerEnvironment } from "@/lib/env";
 import { withRequestDatabase } from "@/lib/db";
-import { activityLog, appSessions, appSettings, authRateLimits, bootstrapState,
+import { activityLog, appSessions, authRateLimits, bootstrapState,
   people, userPermissions } from "@/lib/db/schema";
 import { AuthFailure } from "@/modules/auth/auth.types";
 import type { RequestDatabase } from "@/lib/db";
@@ -95,13 +95,13 @@ export async function consumeAuthRateLimit(action: string, email: string, ip: st
   });
 }
 
-function accountFromPerson(person: Person, sessionTimeoutMinutes: number): Account {
+function accountFromPerson(person: Person): Account {
   if (person.status === "PENDING") throw new AuthFailure("ACCOUNT_PENDING");
   if (person.status !== "ACTIVE" || person.role === "COLLECTOR" || !person.email) {
     throw new AuthFailure("ACCESS_DENIED");
   }
   return { id: person.id, fullName: person.fullName, email: person.email, role: person.role,
-    language: person.language, sessionTimeoutMinutes, hasPhoto: person.profilePhotoKey !== null };
+    language: person.language, hasPhoto: person.profilePhotoKey !== null };
 }
 
 export async function createAppSession(identity: AuthIdentity): Promise<string> {
@@ -109,7 +109,7 @@ export async function createAppSession(identity: AuthIdentity): Promise<string> 
   return withRequestDatabase({ email: identity.email, authUserId: identity.id }, async (transaction) => {
     const person = await findPerson(transaction, identity);
     if (!person) throw new AuthFailure("ACCESS_DENIED");
-    accountFromPerson(person, 30);
+    accountFromPerson(person);
     const token = randomBytes(32).toString("base64url");
     await transaction.insert(appSessions).values({ personId: person.id, tokenHash: hashAuthValue(token),
       expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000), createdBy: person.id });
@@ -120,25 +120,20 @@ export async function createAppSession(identity: AuthIdentity): Promise<string> 
 }
 
 export async function findActiveAccount(
-  identity: AuthIdentity, token: string, touch = false,
+  identity: AuthIdentity, token: string,
 ): Promise<Account | null> {
   if (!identity.emailVerified) return null;
   return withRequestDatabase({ email: identity.email, authUserId: identity.id }, async (transaction) => {
-    const person = await findPerson(transaction, identity, touch);
+    const person = await findPerson(transaction, identity, false);
     if (!person) return null;
-    const [settings] = await transaction.select().from(appSettings).where(eq(appSettings.slot, 1));
-    if (!settings) throw new AuthFailure("AUTH_UNAVAILABLE", 503);
-    const account = accountFromPerson(person, settings.sessionTimeoutMinutes);
+    const account = accountFromPerson(person);
     const sessionQuery = transaction.select().from(appSessions).where(and(
       eq(appSessions.personId, person.id), eq(appSessions.tokenHash, hashAuthValue(token)),
       isNull(appSessions.revokedAt), isNull(appSessions.deletedAt),
     )).limit(1);
-    const [session] = touch ? await sessionQuery.for("update") : await sessionQuery;
+    const [session] = await sessionQuery;
     const now = Date.now();
-    if (!session || session.expiresAt.getTime() <= now
-      || now - session.lastActivityAt.getTime() >= settings.sessionTimeoutMinutes * 60000) return null;
-    if (touch) await transaction.update(appSessions).set({ lastActivityAt: new Date(),
-      updatedAt: new Date(), updatedBy: person.id }).where(eq(appSessions.id, session.id));
+    if (!session || session.expiresAt.getTime() <= now) return null;
     return account;
   });
 }

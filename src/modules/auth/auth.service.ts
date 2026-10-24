@@ -96,6 +96,41 @@ export async function handleAuthPost(request: NextRequest, context: AuthRouteCon
     const parsed = authRequestSchema.safeParse({ ...raw, action });
     if (!parsed.success) return authErrorResponse("INVALID_INPUT", 400);
     const input = parsed.data;
+    if (input.action === "logout") {
+      const response = NextResponse.json({ success: true });
+      const token = request.cookies.get(APP_SESSION_COOKIE)?.value;
+      if (token) {
+        try {
+          const { data: session } = await measure("session_lookup", () => getAuth().getSession());
+          if (session?.user) {
+            const identity = { id: session.user.id, email: session.user.email, emailVerified: session.user.emailVerified };
+            await measure("app_session_db", () => revokeAppSession(identity, token));
+          }
+        } catch {
+          // Cleanup failures must not prevent clearing this browser's login.
+          console.warn("[auth] App-session logout cleanup unavailable");
+        }
+      }
+      try {
+        const upstream = await measure("neon_auth", () => getAuth().handler().POST(request, context));
+        const providerCookies = new NextResponse(null, { headers: upstream.headers }).cookies;
+        for (const cookie of providerCookies.getAll()) response.cookies.set(cookie);
+      } catch {
+        console.warn("[auth] Provider logout cleanup unavailable");
+      }
+      const prefix = "__Secure-neon-auth";
+      const providerNames = new Set([
+        `${prefix}.session_token`, `${prefix}.local.session_data`,
+        `${prefix}.session_challenge`, `${prefix}.session_challange`,
+        ...request.cookies.getAll().map((cookie) => cookie.name).filter((name) => name.startsWith(`${prefix}.`)),
+        ...response.cookies.getAll().map((cookie) => cookie.name).filter((name) => name.startsWith(`${prefix}.`)),
+      ]);
+      for (const name of [APP_SESSION_COOKIE, AUTH_FLOW_COOKIE, ...providerNames]) {
+        response.cookies.set(name, "", { ...cookieOptions, secure: name.startsWith("__Secure-") || cookieOptions.secure,
+          maxAge: 0, expires: new Date(0) });
+      }
+      return finish(response);
+    }
     const email = "email" in input ? input.email : "";
     const ip = request.headers.get("x-real-ip")
       ?? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
@@ -106,16 +141,6 @@ export async function handleAuthPost(request: NextRequest, context: AuthRouteCon
     requireFlow(input, flow);
     if (input.action === "signup" && !await reserveSignup(input.email, input.name)) {
       throw new AuthFailure("SIGNUP_CLOSED");
-    }
-
-    if (input.action === "logout") {
-      const { data: session } = await measure("session_lookup", () => getAuth().getSession());
-      const token = request.cookies.get(APP_SESSION_COOKIE)?.value;
-      if (session?.user && token) {
-        const identity = { id: session.user.id, email: session.user.email,
-          emailVerified: session.user.emailVerified };
-        await measure("app_session_db", () => revokeAppSession(identity, token));
-      }
     }
 
     // Let the SDK proxy handle managed Auth paths and all provider session cookies.
@@ -159,11 +184,11 @@ export async function handleAuthPost(request: NextRequest, context: AuthRouteCon
       if (!checked.success || !checked.data.success || !flow) throw new AuthFailure("OTP_INVALID", 400);
       setFlow(response, { ...flow, otp: input.otp });
     }
-    if (input.action === "verifyEmail" || input.action === "reset" || input.action === "logout") {
+    if (input.action === "verifyEmail" || input.action === "reset") {
       response.cookies.delete(AUTH_FLOW_COOKIE);
     }
     if (input.action === "reset") await revokeSessionsAfterPasswordReset(input.email);
-    if (input.action === "reset" || input.action === "logout") {
+    if (input.action === "reset") {
       response.cookies.delete(APP_SESSION_COOKIE);
     }
     return finish(response);

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { editionValuesSchema } from "@/modules/masters/editions.schema";
 
 export const MASTER_KINDS = ["EDITION", "BOOK_TYPE", "TOKEN_VALUE", "DONATION_CATEGORY", "DONATION_HEAD", "RESPONSIBILITY", "AREA",
   "PAYMENT_MODE", "UPI_APP", "BANK", "BANK_ACCOUNT", "RECEIPT_REASON", "FLAG_REASON"] as const;
@@ -7,7 +8,7 @@ export const masterValuesSchema = z.strictObject({
   code: z.string().trim().min(1).max(40).regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/).transform((value) => value.toUpperCase()),
   nameEn: z.string().trim().min(2).max(120), nameUr: z.string().trim().min(2).max(120),
   active: z.boolean(), notes: z.string().trim().max(1000),
-  effectiveFrom: z.union([z.literal(""), z.iso.date()]), needsDetail: z.boolean(),
+  edition: editionValuesSchema.nullable(), needsDetail: z.boolean(),
   level: z.enum(["", "STATE", "DISTRICT", "BLOCK", "VILLAGE"]),
   parentId: z.union([z.literal(""), z.uuid()]),
   tokenValue: z.enum(["", "10", "20", "50"]),
@@ -21,7 +22,9 @@ export function masterEditorSchema(kind: MasterKind) {
     const required = (field: keyof MasterValues) => {
       if (!values[field]) context.addIssue({ code: "custom", path: [field], message: "Required" });
     };
-    if (kind === "EDITION") required("effectiveFrom");
+    if (kind === "EDITION" && (!values.edition || values.edition.editionCode !== values.code)) {
+      context.addIssue({ code: "custom", path: ["edition"], message: "Edition details required" });
+    }
     if (kind === "AREA") {
       required("level");
       if (values.level !== "STATE") required("parentId");
@@ -32,7 +35,7 @@ export function masterEditorSchema(kind: MasterKind) {
     if (kind === "BANK_ACCOUNT") { required("parentId"); required("accountName"); required("lastFour"); }
   });
 }
-export const masterRowSchema = masterValuesSchema.extend({ id: z.uuid(), kind: masterKindSchema,
+export const masterRowSchema = masterValuesSchema.extend({ edition: editionValuesSchema.nullable().default(null), id: z.uuid(), kind: masterKindSchema,
   builtIn: z.boolean(), updatedAt: z.iso.datetime(), parentNameEn: z.string(), parentNameUr: z.string() });
 export const masterQuerySchema = z.object({
   parentId: z.uuid().optional(),

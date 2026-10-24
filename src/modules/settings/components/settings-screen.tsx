@@ -1,4 +1,5 @@
 "use client";
+import { sessionFetch } from "@/lib/auth/session-fetch";
 
 import { useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -16,7 +17,7 @@ import type { MessageKey } from "@/lib/i18n/messages";
 import type { SaveSettingsValues, SettingsData } from "@/modules/settings/settings.schema";
 
 async function settingsRequest(body?: SaveSettingsValues): Promise<SettingsData> {
-  const response = await fetch("/api/v1/settings", { cache: "no-store",
+  const response = await sessionFetch("/api/v1/settings", { cache: "no-store",
     ...(body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}),
   });
   if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "authDenied"
@@ -35,11 +36,9 @@ function SettingsForm({ data, onSaved, onBusyChange }: { data: SettingsData;
   const [error, setError] = useState<MessageKey | null>(null);
   const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<SaveSettingsValues>({
     resolver: zodResolver(saveSettingsSchema), mode: "onChange",
-    defaultValues: { sessionTimeoutMinutes: data.sessionTimeoutMinutes,
-      defaultReturnMonths: data.defaultReturnMonths, version: data.updatedAt, reason: "" },
+    defaultValues: { defaultReturnMonths: data.defaultReturnMonths, version: data.updatedAt, reason: "" },
   });
-  const hasChanges = watch("sessionTimeoutMinutes") !== data.sessionTimeoutMinutes
-    || watch("defaultReturnMonths") !== data.defaultReturnMonths;
+  const hasChanges = watch("defaultReturnMonths") !== data.defaultReturnMonths;
   const needsReason = watch("reason").trim().length < 3;
   async function submit(values: SaveSettingsValues) {
     setError(null); onBusyChange(true);
@@ -52,9 +51,6 @@ function SettingsForm({ data, onSaved, onBusyChange }: { data: SettingsData;
       <Card className={"settings-panel p-[26px] [&_.panel-title]:mb-[12px] [&_.panel-title_svg]:text-[color:var(--primary)] [&_.input]:min-h-[44px]"}>
         <h2 className={"panel-title flex items-center gap-[11px] text-[length:16px] font-[650] [&_>_svg]:text-[color:var(--primary)]"}><Clock3 size={20} aria-hidden="true" />{t("settingsSession")}</h2>
         <p className={"settings-help text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8] mb-[24px]"}>{t("settingsSessionHelp")}</p>
-        <AuthField id="settings-timeout" label={t("settingsTimeout")} type="number" min={5} max={480} step={1}
-          required hint={t("settingsTimeoutHint")} error={errors.sessionTimeoutMinutes ? t("settingsTimeoutInvalid") : undefined}
-          {...register("sessionTimeoutMinutes", { valueAsNumber: true })} />
       </Card>
       <Card className={"settings-panel p-[26px] [&_.panel-title]:mb-[12px] [&_.panel-title_svg]:text-[color:var(--primary)] [&_.input]:min-h-[44px]"}>
         <h2 className={"panel-title flex items-center gap-[11px] text-[length:16px] font-[650] [&_>_svg]:text-[color:var(--primary)]"}><CalendarDays size={20} aria-hidden="true" />{t("settingsBooks")}</h2>
@@ -98,7 +94,6 @@ export function SettingsScreen({ account }: { account: Account }) {
       cache.setQueryData(key, data);
       cache.setQueryData(`${account.id}:assignments:defaults`, { data: { returnMonths: data.defaultReturnMonths } });
       if (data.defaultReturnMonths !== query.data?.defaultReturnMonths) cache.invalidate(`${account.id}:leftovers:options:`);
-      cache.write(`${account.id}:settings:session-timeout`, data.sessionTimeoutMinutes);
       setSaved(true);
     }} />}
   </AppShell>;

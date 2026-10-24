@@ -7,7 +7,7 @@ import { withRequestDatabase } from "@/lib/db";
 import { collectorEditRequests, collectors, people } from "@/lib/db/schema";
 import { readProfilePhoto, removeProfilePhoto, uploadProfilePhoto } from "@/lib/storage/profile-photos";
 import { AuthFailure } from "@/modules/auth/auth.types";
-import { collectorRequestSchema, collectorRowSchema, collectorValuesSchema } from "@/modules/people/people.schema";
+import { collectorAssignmentOptionSchema, collectorRequestSchema, collectorRowSchema, collectorValuesSchema } from "@/modules/people/people.schema";
 import type { RequestDatabase } from "@/lib/db";
 import type { CollectorQuery, CollectorRow, CollectorSubmission, CollectorValues } from "@/modules/people/people.schema";
 
@@ -64,7 +64,7 @@ export async function listCollectors(query: CollectorQuery) {
     const term = literalLike(query.search);
     const area = literalLike(query.area);
     const where = and(liveCollectors,
-      query.status === "ALL" ? undefined : eq(people.status, query.status),
+      query.view === "ASSIGNMENT" ? eq(people.status, "ACTIVE") : query.status === "ALL" ? undefined : eq(people.status, query.status),
       query.leftoverEligible === "YES" ? eq(collectors.leftoverEligible, true) : undefined,
       query.search ? or(ilike(people.fullName, term), ilike(people.phone, term), ilike(people.email, term), ilike(collectors.code, term)) : undefined,
       query.area ? or(ilike(collectors.village, area), ilike(collectors.district, area), ilike(collectors.block, area)) : undefined);
@@ -73,6 +73,17 @@ export async function listCollectors(query: CollectorQuery) {
     const total = result?.total ?? 0;
     const pageSize = 20;
     const page = Math.min(query.page, Math.max(1, Math.ceil(total / pageSize)));
+    if (query.view === "ASSIGNMENT") {
+      const rows = await tx.select({ id: people.id, fullName: people.fullName, age: people.age, status: people.status,
+        code: collectors.code, village: collectors.village, commissionBasisPoints: collectors.commissionBasisPoints,
+        hasPhoto: sql<boolean>`${people.profilePhotoKey} is not null`, photoVersion: people.updatedAt,
+        leftoverEligible: collectors.leftoverEligible,
+      }).from(people).innerJoin(collectors, eq(collectors.personId, people.id)).where(where)
+        .orderBy(desc(people.createdAt), desc(people.id)).limit(pageSize).offset((page - 1) * pageSize);
+      return { collectors: rows.map(({ commissionBasisPoints, age, photoVersion, ...row }) =>
+        collectorAssignmentOptionSchema.parse({ ...row, age: String(age), photoVersion: photoVersion.toISOString(),
+          commission: commissionBasisPoints === null ? "" : String(commissionBasisPoints / 100) })), total, page, pageSize };
+    }
     const rows = await collectorQuery(tx).where(where).orderBy(desc(people.createdAt), desc(people.id))
       .limit(pageSize).offset((page - 1) * pageSize);
     return { collectors: rows.map(serialize), total, page, pageSize };

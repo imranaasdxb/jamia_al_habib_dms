@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 export const settingsValuesSchema = z.strictObject({
-  sessionTimeoutMinutes: z.number().int().min(5).max(480),
   defaultReturnMonths: z.number().int().min(1).max(60),
 });
 

@@ -6,6 +6,7 @@ import { withRequestDatabase } from "@/lib/db";
 import { masterRecords, people } from "@/lib/db/schema";
 import { AuthFailure } from "@/modules/auth/auth.types";
 import { fixedMasterKinds, masterRowSchema } from "@/modules/masters/masters.schema";
+import { editionLabel } from "@/modules/masters/editions.schema";
 import type { RequestDatabase } from "@/lib/db";
 import type { MasterQuery, MasterSubmission } from "@/modules/masters/masters.schema";
 
@@ -32,7 +33,14 @@ type RecordResult = Awaited<ReturnType<typeof recordQuery>>[number];
 function serialize({ record, parentNameEn, parentNameUr }: RecordResult) {
   return masterRowSchema.parse({ id: record.id, kind: record.kind, code: record.code, nameEn: record.nameEn,
     nameUr: record.nameUr, active: record.active, builtIn: record.builtIn, notes: record.notes,
-    effectiveFrom: record.effectiveFrom ?? "", needsDetail: record.needsDetail, level: record.level ?? "",
+    edition: record.kind === "EDITION" && record.editionNumber !== null ? {
+      editionNumber: String(record.editionNumber), editionCode: record.editionCode ?? record.code,
+      bookType: record.editionBookType,
+      tokenTen: String(record.editionTokenBooks?.["10"] ?? 0), tokenTwenty: String(record.editionTokenBooks?.["20"] ?? 0), tokenFifty: String(record.editionTokenBooks?.["50"] ?? 0), printingYear: String(record.printingYear ?? ""),
+      pagesFrom: String(record.pagesFrom ?? ""), pagesTo: String(record.pagesTo ?? ""),
+      pagesPerBook: record.pagesPerBook, quantity: record.bookQuantity, designedPrintedBy: record.designedPrintedBy ?? "",
+    } : null,
+    needsDetail: record.needsDetail, level: record.level ?? "",
     parentId: record.parentId ?? "", parentNameEn: parentNameEn ?? "", parentNameUr: parentNameUr ?? "",
     tokenValue: record.tokenValueRupees === null ? "" : String(record.tokenValueRupees),
     accountName: record.accountName, lastFour: record.lastFour, upiId: record.upiId,
@@ -109,8 +117,18 @@ export async function saveMasterRecord(input: MasterSubmission, id?: string) {
       )).limit(1);
       if (child) throw new AuthFailure("MASTER_HAS_CHILDREN", 409);
     }
-    const rowValues = { code: values.code, nameEn: values.nameEn, nameUr: values.nameUr,
-      active: values.active, notes: values.notes, effectiveFrom: input.kind === "EDITION" ? values.effectiveFrom || null : null,
+    const edition = input.kind === "EDITION" ? values.edition : null;
+    const rowValues = { code: edition?.editionCode ?? values.code,
+      nameEn: edition ? editionLabel(Number(edition.editionNumber)) : values.nameEn,
+      nameUr: edition ? `ایڈیشن ${Number(edition.editionNumber)}` : values.nameUr,
+      active: values.active, notes: values.notes,
+      editionCode: edition?.editionCode ?? null, editionNumber: edition ? Number(edition.editionNumber) : null,
+      editionBookType: edition?.bookType ?? null,
+      editionTokenBooks: edition?.bookType === "TOKEN" ? { "10": Number(edition.tokenTen), "20": Number(edition.tokenTwenty), "50": Number(edition.tokenFifty) } : null,
+      printingYear: edition ? Number(edition.printingYear) : null,
+      pagesFrom: edition ? Number(edition.pagesFrom) : null, pagesTo: edition ? Number(edition.pagesTo) : null,
+      pagesPerBook: edition ? 50 : null, bookQuantity: edition?.quantity ?? null,
+      designedPrintedBy: edition?.designedPrintedBy ?? null,
       needsDetail: donationHead && ["OTHER_OBLIGATORY", "OTHER_VOLUNTARY", "OTHER_SPECIFIED"].includes(values.code)
         ? true : ["DONATION_HEAD", "UPI_APP", "RECEIPT_REASON", "FLAG_REASON"].includes(input.kind) && values.needsDetail,
       level: area && values.level ? values.level : null, parentId,
