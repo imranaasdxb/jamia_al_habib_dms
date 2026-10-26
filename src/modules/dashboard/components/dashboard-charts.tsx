@@ -33,9 +33,9 @@ export function DashboardCharts({ period, accountId }: { period: DashboardPeriod
 
   return (
     <>
-      <Card className={"panel p-[var(--space-panel)] min-w-0"}>
+      <Card className={"panel order-1 min-w-0 rounded-[18px] border-card p-[var(--space-panel)] shadow-[0_3px_12px_rgb(16_27_46/3%)] xl:col-span-7 2xl:col-span-6"}>
         <div className={"panel-header flex items-center justify-between gap-[12px]"}>
-          <h2 className={"panel-title flex items-center gap-[11px] text-[length:16px] font-[650] [&_>_svg]:text-[color:var(--primary)]"}><ChartNoAxesCombined size={21} />{t("collectionsTrend")}</h2>
+          <h2 className={"panel-title flex items-center gap-2 text-sm font-semibold [&_>_svg]:size-4 [&_>_svg]:text-primary"}><ChartNoAxesCombined size={21} />{t("collectionsTrend")}</h2>
           <div className={"segmented-control inline-flex gap-[2px] bg-[var(--muted)] p-[3px] rounded-[var(--radius-pill)] [&_button]:[border:0] [&_button]:bg-[transparent] [&_button]:text-[color:var(--muted-foreground)] [&_button]:p-[8px_11px] [&_button]:text-[length:10px] [&_button]:rounded-[var(--radius-pill)] [&_button[aria-pressed='true']]:bg-[var(--primary)] [&_button[aria-pressed='true']]:text-[color:var(--primary-foreground)]"} aria-label={t("collectionsTrend")}>
             {(["monthly", "weekly", "yearly"] as const).map((value) => (
               <button key={value} type="button" aria-pressed={interval === value}
@@ -67,12 +67,12 @@ export function DashboardCharts({ period, accountId }: { period: DashboardPeriod
           </ResponsiveContainer>
         </div>
       </Card>
-      <Card className={"panel p-[var(--space-panel)] min-w-0"}>
+      <Card className={"panel order-2 min-w-0 rounded-[18px] border-card p-[var(--space-panel)] shadow-[0_3px_12px_rgb(16_27_46/3%)] xl:col-span-5 2xl:col-span-3"}>
         <div className={"panel-header flex items-center justify-between gap-[12px]"}>
-          <h2 className={"panel-title flex items-center gap-[11px] text-[length:16px] font-[650] [&_>_svg]:text-[color:var(--primary)]"}><Wallet size={21} />{t("paymentBreakdown")}</h2>
+          <h2 className={"panel-title flex items-center gap-2 text-sm font-semibold [&_>_svg]:size-4 [&_>_svg]:text-primary"}><Wallet size={21} />{t("paymentBreakdown")}</h2>
           <span className={"muted text-[color:var(--muted-foreground)] text-xs"}>{t(period)}</span>
         </div>
-        <div className={"payment-content flex items-center justify-between gap-[10px] min-h-[290px]"}>
+        <div className={"payment-content flex min-h-[290px] flex-col items-center justify-center gap-4 pt-4"}>
           <div className={"payment-chart relative w-[205px] h-[205px] [direction:ltr]"} role="img" aria-label={t("paymentBreakdown")}>
             <PieChart width={205} height={205}>
               <Pie data={payments} dataKey="value" nameKey="name" innerRadius={64}
@@ -87,7 +87,7 @@ export function DashboardCharts({ period, accountId }: { period: DashboardPeriod
               <span>{t("total")}</span>
             </div>
           </div>
-          <div className={"payment-legend flex flex-col gap-[28px] pe-[5px]"}>
+          <div className={"payment-legend flex flex-wrap justify-center gap-x-5 gap-y-3 text-xs"}>
             {payments.map((payment, index) => (
               <div key={payment.name}>
                 <span className={"legend-label flex gap-[9px] items-center text-[length:12px]"}><span className={index === 0

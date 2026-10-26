@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { AuthField } from "@/modules/auth/components/auth-field";
 import { ProfilePhotoEditor } from "@/modules/users/components/profile-photo-editor";
 import { collectorDefaults, collectorLabels, peopleError, peopleRequest } from "@/modules/people/people.client";
-import { collectorSaveResponseSchema, collectorValuesSchema } from "@/modules/people/people.schema";
+import { collectorSaveResponseSchema, collectorStoredValuesSchema, collectorValuesSchema } from "@/modules/people/people.schema";
 import type { CollectorRow, CollectorValues } from "@/modules/people/people.schema";
 import type { MessageKey } from "@/lib/i18n/messages";
 
@@ -24,7 +24,8 @@ export function CollectorForm({ collector, admin, onBusyChange, onSaved }: {
   const [samePhone, setSamePhone] = useState(Boolean(collector?.whatsapp && collector.whatsapp === collector.phone));
   const { register, handleSubmit, setValue, watch, formState: { errors, isSubmitting, isDirty, isValid } } = useForm<CollectorValues>({
     resolver: zodResolver(collectorValuesSchema), mode: "onChange",
-    defaultValues: collector ? collectorValuesSchema.strip().parse(collector) : collectorDefaults,
+    defaultValues: collector ? { ...collectorStoredValuesSchema.strip().parse(collector),
+      gender: collector.gender === "UNSPECIFIED" ? undefined : collector.gender } : collectorDefaults,
   });
   const phone = watch("phone");
   useEffect(() => { if (samePhone) setValue("whatsapp", phone, { shouldValidate: true, shouldDirty: true }); }, [phone, samePhone, setValue]);
@@ -70,7 +71,7 @@ export function CollectorForm({ collector, admin, onBusyChange, onSaved }: {
         {field("age", true, "number", { min: 18, max: 80 })}
         <div><label className={"field-label block text-[length:12px] font-semibold mb-[8px]"} htmlFor="collector-gender">{t("usersGender")} *</label>
           <select id="collector-gender" className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} {...register("gender")}>
-            <option value="MALE">{t("usersMale")}</option><option value="FEMALE">{t("usersFemale")}</option><option value="OTHER">{t("usersOther")}</option>
+            <option value="" disabled>{t("booksChooseOption")}</option><option value="MALE">{t("usersMale")}</option><option value="FEMALE">{t("usersFemale")}</option><option value="OTHER">{t("usersOther")}</option>
           </select></div>
         <div><label className={"field-label block text-[length:12px] font-semibold mb-[8px]"} htmlFor="collector-status">{t("status")} *</label>
           <select id="collector-status" className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} {...register("status")}>

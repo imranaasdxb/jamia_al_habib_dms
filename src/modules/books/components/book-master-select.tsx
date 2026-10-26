@@ -9,9 +9,9 @@ import { masterOptionsResponseSchema } from "@/modules/masters/masters.schema";
 import type { MessageKey } from "@/lib/i18n/messages";
 import type { MasterKind, MasterOption } from "@/modules/masters/masters.schema";
 
-export function BookMasterSelect({ accountId, kind, value, onChange, onOptionChange, label, parentId, currentName, required = false, error = false, disabled = false, searchable = false }: {
+export function BookMasterSelect({ accountId, kind, value, onChange, onOptionChange, label, parentId, bookType, placeholder, currentName, required = false, error = false, disabled = false, searchable = false }: {
   accountId: string; kind: MasterKind; value: string; onChange: (value: string) => void; parentId?: string; currentName?: string;
-  label: MessageKey; required?: boolean; error?: boolean; disabled?: boolean; searchable?: boolean;
+  label: MessageKey; bookType?: "REGULAR" | "TOKEN"; placeholder?: MessageKey; required?: boolean; error?: boolean; disabled?: boolean; searchable?: boolean;
   onOptionChange?: (row: MasterOption | null) => void;
 }) {
   const { t, language } = useLanguage();
@@ -19,7 +19,7 @@ export function BookMasterSelect({ accountId, kind, value, onChange, onOptionCha
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [selectedName, setSelectedName] = useState("");
-  const params = new URLSearchParams({ kind, level: "", search: search.trim(), page: String(page), ...(parentId ? { parentId } : {}) }).toString();
+  const params = new URLSearchParams({ kind, level: "", search: search.trim(), page: String(page), ...(parentId ? { parentId } : {}), ...(kind === "EDITION" && bookType ? { bookType } : {}) }).toString();
   const fetchOptions = useCallback(async () => masterOptionsResponseSchema.parse(await booksRequest(`/api/v1/masters/options?${params}`)), [params]);
   const query = usePageQuery(`${accountId}:masters:options:${kind}:${params}`, fetchOptions, { enabled: !disabled, delay: search ? 300 : 0 });
   const loading = query.loading || query.stale;
@@ -33,7 +33,7 @@ export function BookMasterSelect({ accountId, kind, value, onChange, onOptionCha
         const row = options.find((item) => optionValue(item) === event.target.value);
         setSelectedName(row ? language === "ur" ? row.nameUr : row.nameEn : ""); onChange(event.target.value); onOptionChange?.(row ?? null);
       }}>
-      <option value="">{t(required ? "booksChooseOption" : "booksAllOptions")}</option>
+      <option value="">{t(placeholder ?? (required ? "booksChooseOption" : "booksAllOptions"))}</option>
       {value && !options.some((row) => optionValue(row) === value) && <option value={value}>
         {currentName || selectedName || (value === "REGULAR" ? t("booksRegular") : value === "TOKEN" ? t("booksToken") : t("booksSelectedOption"))}</option>}
       {options.map((row) => <option key={row.id} value={optionValue(row)}>{language === "ur" ? row.nameUr : row.nameEn}</option>)}

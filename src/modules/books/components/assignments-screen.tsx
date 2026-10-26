@@ -72,7 +72,7 @@ export function AssignmentsScreen({ account, initialId = "", initialCode = "" }:
     <div className={"page-header flex justify-between items-center gap-[20px] mb-[22px]"}><div><h1 className={"page-title text-[length:34px] font-bold tracking-[-1.3px] [html[lang='ur']_&]:tracking-0"}>{t("assignBooks")}</h1><p className={"page-subtitle text-[color:var(--muted-foreground)] mt-[7px]"}>{t("assignDescription")}</p></div>
       <div className={"header-actions flex items-center gap-[12px]"}><Button asChild variant="outline"><Link href="/books">{t("booksStock")}</Link></Button>
         <Button asChild variant="outline"><Link href="/books/returns">{t("returnsScreen")}</Link></Button>
-        {account.role === "ADMIN" && <Button asChild variant="outline"><Link href="/books/leftovers">{t("leftoversScreen")}</Link></Button>}
+        {account.role === "SUPER_ADMIN" && <Button asChild variant="outline"><Link href="/books/leftovers">{t("leftoversScreen")}</Link></Button>}
         <Button onClick={() => setOpen(true)}><Plus size={18} />{t("assignNew")}</Button></div></div>
     {savedNumber && <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8]"} role="status">{t("assignSaved")} <strong>{savedNumber}</strong></p>}
     <Card className={"assignment-filters grid grid-cols-[minmax(180px,_1fr)_180px_42px] items-center gap-[12px] p-[18px] max-[650px]:grid-cols-[minmax(0,_1fr)_42px] max-[650px]:[&_>_.input:first-child]:col-[1_/_-1]"}><Input type="search" maxLength={100} aria-label={t("search")} placeholder={t("assignSearch")} value={search}

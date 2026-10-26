@@ -46,7 +46,7 @@ export function BooksScreen({ account }: { account: Account }) {
   const [page, setPage] = usePageState(`${scope}filters:page`, 1);
   const [viewing, setViewing] = useState<BookRow | null>(null);
   const params = new URLSearchParams({ search: search.trim(), editionId, bookType, tokenValue, page: String(page) }).toString();
-  const key = `${scope}query:${params}`;
+  const key = `${scope}query:edition-order:${params}`;
   const fetchBooks = useCallback(async (): Promise<BooksPage> => {
     const result = booksResponseSchema.parse(await booksRequest(`/api/v1/books?${params}`));
     return { rows: result.data, ...result.meta };
@@ -77,7 +77,7 @@ export function BooksScreen({ account }: { account: Account }) {
           <option value="ALL">{t("booksChooseOption")}</option><option value="REGULAR">{t("booksRegular")}</option><option value="TOKEN">{t("booksToken")}</option>
         </select>
       </div>
-      <BookMasterSelect accountId={account.id} kind="EDITION" label="mastersEditions" required disabled={bookType === "ALL"} value={editionId} onChange={(value) => { setEdition(value); setPage(1); }} />
+      <BookMasterSelect key={bookType} accountId={account.id} kind="EDITION" bookType={bookType === "ALL" ? undefined : bookType} label="mastersEditions" required disabled={bookType === "ALL"} value={editionId} onChange={(value) => { setEdition(value); setPage(1); }} />
       <div className="min-w-0"><label className="mb-2 block text-xs font-semibold" htmlFor="stock-token">{t("mastersTokenValues")}</label>
         <select id="stock-token" className={selectClass} value={tokenValue} disabled={bookType !== "TOKEN"} onChange={(event) => {
           const value = event.target.value;

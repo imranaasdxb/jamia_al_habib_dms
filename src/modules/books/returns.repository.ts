@@ -2,7 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { ZodError } from "zod";
 import { and, asc, count, desc, eq, ilike, inArray, isNull, lt, or, sql } from "drizzle-orm";
-import { bookAssignments, bookCases, bookReturns, books, collectors, people } from "@/lib/db/schema";
+import { bookAssignments, bookCases, bookReceipts, bookReturns, books, collectors, people } from "@/lib/db/schema";
 import { AuthFailure } from "@/modules/auth/auth.types";
 import { withBooksDatabase } from "@/modules/books/books.repository";
 import { bookRowSchema } from "@/modules/books/books.schema";
@@ -85,7 +85,31 @@ export async function listOpenReturns(query: ReturnQuery) {
       .innerJoin(collectors, eq(collectors.personId, bookAssignments.collectorId)).innerJoin(people, eq(people.id, collectors.personId))
       .leftJoin(bookReturns, eq(bookReturns.caseId, bookCases.id)).where(where)
       .orderBy(asc(bookAssignments.expectedReturnDate), asc(books.bookNumber), asc(bookCases.id)).limit(pageSize).offset((page - 1) * pageSize);
-    return { rows: rows.map(serializeCase), total, page, pageSize };
+    const collectorIds = [...new Set(rows.map((row) => row.assignment.collectorId))];
+    const summaries = collectorIds.length ? await tx.select({
+      caseId: bookReturns.caseId, collectorId: bookAssignments.collectorId,
+      enteredReceiptCount: count(bookReceipts.id),
+      collectedPaise: sql<number>`coalesce(sum(${bookReceipts.amountPaise}) filter (where ${bookReceipts.status} = 'VALID'),0)::double precision`,
+      collectedCommissionPaise: sql<number>`(round(coalesce(sum(${bookReceipts.amountPaise}) filter (where ${bookReceipts.status} = 'VALID'),0)::numeric
+        * ${bookReturns.commissionBasisPoints} / 1000000) * 100)::double precision`,
+    }).from(bookReturns).innerJoin(bookAssignments, eq(bookAssignments.id, bookReturns.assignmentId))
+      .innerJoin(books, eq(books.id, bookReturns.bookId))
+      .leftJoin(bookReceipts, and(eq(bookReceipts.returnId, bookReturns.id), isNull(bookReceipts.deletedAt)))
+      .where(and(inArray(bookAssignments.collectorId, collectorIds), isNull(bookReturns.deletedAt),
+        isNull(bookAssignments.deletedAt), isNull(books.deletedAt)))
+      .groupBy(bookReturns.id, bookReturns.caseId, bookReturns.commissionBasisPoints, bookAssignments.collectorId) : [];
+    const byCase = new Map(summaries.map((summary) => [summary.caseId, {
+      enteredReceiptCount: summary.enteredReceiptCount, collectedPaise: summary.collectedPaise,
+      collectedCommissionPaise: summary.collectedCommissionPaise,
+    }]));
+    const fundraiserTotals = new Map(collectorIds.map((collectorId) => [collectorId,
+      { collectorId, collectedPaise: 0, collectedCommissionPaise: 0 }]));
+    for (const summary of summaries) {
+      const totals = fundraiserTotals.get(summary.collectorId);
+      if (totals) { totals.collectedPaise += summary.collectedPaise; totals.collectedCommissionPaise += summary.collectedCommissionPaise; }
+    }
+    return { rows: rows.map((row) => ({ ...serializeCase(row), ...byCase.get(row.id) })),
+      fundraiserTotals: [...fundraiserTotals.values()], total, page, pageSize };
   });
 }
 export async function listBookReturns(query: ReturnQuery) {

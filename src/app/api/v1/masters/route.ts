@@ -1,9 +1,9 @@
 import { requireSameOrigin } from "@/modules/auth/auth.service";
 import { AuthFailure } from "@/modules/auth/auth.types";
-import { masterFailure } from "@/modules/masters/masters.http";
+import { masterFailure, masterSubmissionBody } from "@/modules/masters/masters.http";
 import { listMasterRecords, saveMasterRecord } from "@/modules/masters/masters.repository";
 import { masterQuerySchema, masterSubmissionSchema } from "@/modules/masters/masters.schema";
-import { userJson, userResponse } from "@/modules/users/users.http";
+import { userResponse } from "@/modules/users/users.http";
 import type { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
@@ -18,8 +18,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     requireSameOrigin(request);
-    const parsed = masterSubmissionSchema.safeParse(await userJson(request));
+    const { payload, photo } = await masterSubmissionBody(request);
+    const parsed = masterSubmissionSchema.safeParse(payload);
     if (!parsed.success) throw new AuthFailure("INVALID_INPUT", 400);
-    return userResponse(await saveMasterRecord(parsed.data), 201);
+    return userResponse(await saveMasterRecord(parsed.data, undefined, photo), 201);
   } catch (error) { return masterFailure(error); }
 }

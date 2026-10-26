@@ -12,12 +12,12 @@ export const masterCategories: { kind: MasterKind; label: MessageKey }[] = [
   { kind: "RECEIPT_REASON", label: "mastersReceiptReasons" }, { kind: "FLAG_REASON", label: "mastersFlagReasons" },
 ];
 export const masterLevelLabels: Record<Exclude<MasterValues["level"], "">, MessageKey> = {
-  STATE: "peopleState", DISTRICT: "peopleDistrict", BLOCK: "mastersBlock", VILLAGE: "mastersVillage",
+  COLLECTION: "mastersCollectionArea", STATE: "peopleState", DISTRICT: "peopleDistrict", BLOCK: "mastersBlock", VILLAGE: "mastersVillage",
 };
 export function masterDefaults(kind: MasterKind): MasterValues {
   return { code: "", nameEn: "", nameUr: "", active: true, notes: "", needsDetail: false,
     edition: null,
-    level: kind === "AREA" ? "STATE" : "", parentId: "", tokenValue: "", accountName: "", lastFour: "", upiId: "" };
+    level: kind === "AREA" ? "COLLECTION" : "", parentId: "", tokenValue: "", accountName: "", lastFour: "", upiId: "" };
 }
 export const mastersRequest = usersRequest;
 export function mastersError(error: unknown): MessageKey {
@@ -26,6 +26,8 @@ export function mastersError(error: unknown): MessageKey {
     EDITION_TOKEN_REQUIRED: "editionTokenRequired", EDITION_RANGE_CONTINUITY: "editionContinuity", MASTER_EXISTS: "mastersDuplicate", ACCESS_DENIED: "authDenied",
     SESSION_EXPIRED: "authExpired", INVALID_INPUT: "mastersInvalid", MASTER_FIXED: "mastersFixed",
     MASTER_PARENT: "mastersInvalidParent", MASTER_HAS_CHILDREN: "mastersHasChildren",
-    STALE_MASTER: "mastersStale", MASTER_NOT_FOUND: "mastersNotFound", MASTER_EDITION_SETUP_REQUIRED: "editionSetupRequired" };
+    STALE_MASTER: "mastersStale", MASTER_NOT_FOUND: "mastersNotFound", MASTER_EDITION_SETUP_REQUIRED: "editionSetupRequired",
+    INVALID_PHOTO: "editionReceiptInvalid", STORAGE_NOT_CONFIGURED: "editionReceiptUploadFailed", STORAGE_UNAVAILABLE: "editionReceiptUploadFailed",
+    MASTER_RECEIPT_SAMPLE_SETUP_REQUIRED: "editionReceiptSetupRequired" };
   return messages[code] ?? "mastersFailed";
 }

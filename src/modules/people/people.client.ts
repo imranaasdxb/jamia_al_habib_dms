@@ -19,8 +19,10 @@ export const peopleRequest = usersRequest;
 export function peopleError(error: unknown): MessageKey {
   const code = error instanceof Error ? error.message : "";
   const messages: Record<string, MessageKey> = {
+    PEOPLE_TABLE_SETUP_REQUIRED: "peopleImportSetup", PEOPLE_IMPORT_SETUP_REQUIRED: "peopleImportSetup",
     USER_EXISTS: "peopleDuplicate", INVALID_INPUT: "peopleInvalid", ACCESS_DENIED: "authDenied",
     SESSION_EXPIRED: "authExpired", STALE_COLLECTOR: "peopleStale", COLLECTOR_NOT_FOUND: "peopleNotFound",
+    COLLECTOR_HAS_HISTORY: "peopleDeleteHasHistory", COLLECTOR_DELETE_SETUP_REQUIRED: "peopleDeleteSetup",
     COLLECTOR_REQUEST_PENDING: "peoplePendingRequest", COLLECTOR_REQUEST_CLOSED: "peopleClosedRequest",
     STORAGE_NOT_CONFIGURED: "usersStorageSetup", STORAGE_UNAVAILABLE: "usersStorageFailed", INVALID_PHOTO: "usersInvalidPhoto",
   };

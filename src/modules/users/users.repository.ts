@@ -30,7 +30,7 @@ export async function withAdminDatabase<T>(
   const context = await getUsersAccount();
   if (!context) throw new AuthFailure("SESSION_EXPIRED", 401);
   const { account, identity } = context;
-  if (account.role !== "ADMIN") throw new AuthFailure("ACCESS_DENIED");
+  if (account.role !== "SUPER_ADMIN") throw new AuthFailure("ACCESS_DENIED");
 
   return withRequestDatabase({ email: identity.email, authUserId: identity.id },
     async (transaction) => {
@@ -40,11 +40,11 @@ export async function withAdminDatabase<T>(
         status: people.status }).from(people).where(and(eq(people.id, account.id),
         eq(people.authUserId, identity.id), isNull(people.deletedAt))).limit(1);
       const [actor] = mutation ? await actorQuery.for("update") : await actorQuery;
-      if (!actor || actor.role !== "ADMIN" || actor.status !== "ACTIVE") {
+      if (!actor || actor.role !== "SUPER_ADMIN" || actor.status !== "ACTIVE") {
         throw new AuthFailure("ACCESS_DENIED");
       }
       await transaction.execute(sql`select set_config('app.person_id', ${actor.id}, true),
-        set_config('app.role', 'ADMIN', true)`);
+        set_config('app.role', 'SUPER_ADMIN', true)`);
       return operation(transaction, actor.id);
     });
 }
@@ -55,7 +55,7 @@ export async function listUsers(query: UsersQuery): Promise<UsersPageData> {
     // Treat SQL LIKE wildcards as literal search characters.
     const term = query.search.replaceAll("\\", "\\\\").replaceAll("%", "\\%")
       .replaceAll("_", "\\_");
-    const where = and(isNull(people.deletedAt), inArray(people.role, ["ADMIN", "STAFF"]),
+    const where = and(isNull(people.deletedAt), inArray(people.role, ["SUPER_ADMIN", "ADMIN"]),
       query.role === "ALL" ? undefined : eq(people.role, query.role),
       term ? or(ilike(people.fullName, `%${term}%`), ilike(people.email, `%${term}%`),
         ilike(people.phone, `%${term}%`)) : undefined);
@@ -88,7 +88,7 @@ export function profileColumns(values: UserProfileValues) {
 export async function getManagedUser(id: string) {
   return withAdminDatabase(async (transaction) => {
     const [person] = await transaction.select().from(people).where(and(eq(people.id, id),
-      inArray(people.role, ["ADMIN", "STAFF"]), isNull(people.deletedAt))).limit(1);
+      inArray(people.role, ["SUPER_ADMIN", "ADMIN"]), isNull(people.deletedAt))).limit(1);
     if (!person) throw new AuthFailure("USER_NOT_FOUND", 404);
     return person;
   });
@@ -120,19 +120,19 @@ export async function createUserDraft(values: UserProfileValues, existingId?: st
 
 export async function requireEditableTarget(transaction: RequestDatabase, actorId: string, id: string) {
   const [person] = await transaction.select().from(people).where(and(eq(people.id, id),
-    inArray(people.role, ["ADMIN", "STAFF"]), isNull(people.deletedAt))).limit(1).for("update");
+    inArray(people.role, ["SUPER_ADMIN", "ADMIN"]), isNull(people.deletedAt))).limit(1).for("update");
   if (!person) throw new AuthFailure("USER_NOT_FOUND", 404);
   return { person, isSelf: person.id === actorId };
 }
 
 export async function guardAccessChange(transaction: RequestDatabase, actorId: string,
-  person: typeof people.$inferSelect, role: "ADMIN" | "STAFF", status: string) {
+  person: typeof people.$inferSelect, role: "SUPER_ADMIN" | "ADMIN", status: string) {
   if (person.id === actorId && (role !== person.role || status !== person.status)) {
     throw new AuthFailure("CANNOT_CHANGE_SELF", 409);
   }
-  if (person.role === "ADMIN" && person.status === "ACTIVE" && (role !== "ADMIN" || status !== "ACTIVE")) {
+  if (person.role === "SUPER_ADMIN" && person.status === "ACTIVE" && (role !== "SUPER_ADMIN" || status !== "ACTIVE")) {
     const [result] = await transaction.select({ total: count() }).from(people).where(and(
-      eq(people.role, "ADMIN"), eq(people.status, "ACTIVE"), isNull(people.deletedAt)));
+      eq(people.role, "SUPER_ADMIN"), eq(people.status, "ACTIVE"), isNull(people.deletedAt)));
     if ((result?.total ?? 0) <= 1) throw new AuthFailure("LAST_ADMIN", 409);
   }
 }

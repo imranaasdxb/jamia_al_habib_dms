@@ -14,18 +14,21 @@ import type { MessageKey } from "@/lib/i18n/messages";
 
 export function MasterForm(props: {
   accountId: string; kind: MasterKind; record?: MasterRow; onBusyChange: (busy: boolean) => void; onSaved: (record: MasterRow) => void;
+  initialParent?: Pick<MasterRow, "id" | "nameEn" | "nameUr">;
 }) {
   return props.kind === "EDITION" ? <EditionForm {...props} /> : <GeneralMasterForm {...props} />;
 }
-function GeneralMasterForm({ accountId, kind, record, onBusyChange, onSaved }: {
+function GeneralMasterForm({ accountId, kind, record, initialParent, onBusyChange, onSaved }: {
   accountId: string; kind: MasterKind; record?: MasterRow; onBusyChange: (busy: boolean) => void; onSaved: (record: MasterRow) => void;
+  initialParent?: Pick<MasterRow, "id" | "nameEn" | "nameUr">;
 }) {
   const { t, language } = useLanguage();
   const [reason, setReason] = useState("");
   const [error, setError] = useState<MessageKey | null>(null);
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting, isDirty, isValid } } = useForm<MasterValues>({
     resolver: zodResolver(masterEditorSchema(kind)), mode: "onChange",
-    defaultValues: record ? masterValuesSchema.strip().parse({ ...record, edition: record.edition ?? null }) : masterDefaults(kind),
+    defaultValues: record ? masterValuesSchema.strip().parse({ ...record, edition: record.edition ?? null })
+      : { ...masterDefaults(kind), parentId: kind === "DONATION_HEAD" ? initialParent?.id ?? "" : "" },
   });
   const level = watch("level");
   const parentId = watch("parentId");
@@ -43,13 +46,13 @@ function GeneralMasterForm({ accountId, kind, record, onBusyChange, onSaved }: {
   }
   return <form className={"auth-form flex flex-col gap-[19px] mt-[25px] masters-form mt-[24px] [&_textarea]:[font:inherit] [&_textarea]:[resize:vertical] [&_input[lang='ur']]:[font-family:var(--font-urdu),_serif]"} noValidate onSubmit={handleSubmit(submit)}>
     <fieldset disabled={isSubmitting} className={"masters-fields [border:0] p-0 m-0 min-w-0 grid gap-[22px]"}>
-      <div className={"masters-form-grid grid grid-cols-[repeat(2,_minmax(0,_1fr))] gap-[22px] max-[700px]:grid-cols-[1fr]"}><AuthField id="master-code" label={t("mastersCode")} required maxLength={40}
-        readOnly={Boolean(record)} hint={t("mastersCodeHint")} error={errors.code ? t("mastersInvalidField") : undefined} {...register("code")} />
+      <div className={"masters-form-grid grid grid-cols-[repeat(2,_minmax(0,_1fr))] gap-[22px] max-[700px]:grid-cols-[1fr]"}>{(kind !== "AREA" || record) && <AuthField id="master-code" label={t("mastersCode")} required maxLength={40}
+        readOnly={Boolean(record)} hint={t("mastersCodeHint")} error={errors.code ? t("mastersInvalidField") : undefined} {...register("code")} />}
         <div className={"masters-active flex flex-col"}><label className={"field-label block text-[length:12px] font-semibold mb-[8px]"} htmlFor="master-active">{t("status")}</label>
           <label className={"masters-checkbox inline-flex items-center gap-[9px] min-h-[38px] text-[length:12px] [&_input]:[accent-color:var(--primary)]"}><input id="master-active" type="checkbox" {...register("active")} />{t("usersActive")}</label></div>
-        <AuthField id="master-name-en" label={t("mastersNameEn")} required maxLength={120} dir="ltr"
+        <AuthField id="master-name-en" label={t(kind === "AREA" ? "mastersAreaName" : "mastersNameEn")} required maxLength={120} dir="ltr"
           error={errors.nameEn ? t("mastersInvalidField") : undefined} {...register("nameEn")} />
-        <AuthField id="master-name-ur" label={t("mastersNameUr")} required maxLength={120} dir="rtl" lang="ur"
+        <AuthField id="master-name-ur" label={t(kind === "AREA" ? "mastersAreaUrduOptional" : "mastersNameUr")} required={kind !== "AREA"} maxLength={120} dir="rtl" lang="ur"
           error={errors.nameUr ? t("mastersInvalidField") : undefined} {...register("nameUr")} />
         {kind === "TOKEN_VALUE" && <AuthField id="master-token" label={t("mastersTokenRupees")} readOnly {...register("tokenValue")} />}
         {kind === "AREA" && <div><label className={"field-label block text-[length:12px] font-semibold mb-[8px]"} htmlFor="master-area-level">{t("mastersAreaLevel")} *</label>
@@ -60,7 +63,11 @@ function GeneralMasterForm({ accountId, kind, record, onBusyChange, onSaved }: {
                 setValue("parentId", "", { shouldDirty: true, shouldValidate: true });
               }}>{(Object.keys(masterLevelLabels) as Exclude<MasterValues["level"], "">[]).map((value) =>
                 <option key={value} value={value}>{t(masterLevelLabels[value])}</option>)}</select>}</div>}
-        {(kind === "DONATION_HEAD" || kind === "BANK_ACCOUNT" || (kind === "AREA" && level !== "STATE" && level !== "")) && <MasterParentSelect
+        {kind === "DONATION_HEAD" && initialParent && !record ? <div>
+          <AuthField id="master-head-category" label={t("mastersDonationCategory")} required readOnly
+            value={language === "ur" ? initialParent.nameUr : initialParent.nameEn} />
+          <input type="hidden" {...register("parentId")} />
+        </div> : (kind === "DONATION_HEAD" || kind === "BANK_ACCOUNT" || (kind === "AREA" && level !== "STATE" && level !== "")) && <MasterParentSelect
           key={`${kind}:${level}`} accountId={accountId} bank={kind === "BANK_ACCOUNT"} donation={kind === "DONATION_HEAD"} level={level} value={parentId}
           currentName={language === "ur" ? record?.parentNameUr ?? "" : record?.parentNameEn ?? ""}
           error={Boolean(errors.parentId)} onChange={(value) => setValue("parentId", value, { shouldDirty: true, shouldValidate: true })} />}

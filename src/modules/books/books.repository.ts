@@ -12,7 +12,7 @@ import type { BookSubmission, BooksQuery, SingleBookValues } from "@/modules/boo
 export class BookConflict extends AuthFailure {
   constructor(code: string, public readonly bookNumber: string) { super(code, 409); }
 }
-export async function withBooksDatabase<T>(operation: (tx: RequestDatabase, actor: { id: string; fullName: string; role: "ADMIN" | "STAFF" | "COLLECTOR" }) => Promise<T>) {
+export async function withBooksDatabase<T>(operation: (tx: RequestDatabase, actor: { id: string; fullName: string; role: "SUPER_ADMIN" | "ADMIN" | "COLLECTOR" }) => Promise<T>) {
   const context = await getAccountContext(true);
   if (!context) throw new AuthFailure("SESSION_EXPIRED", 401);
   return withRequestDatabase({ email: context.identity.email, authUserId: context.identity.id }, async (tx) => {
@@ -58,7 +58,7 @@ export async function listBooks(query: BooksQuery) {
     const total = result?.total ?? 0;
     const pageSize = 20;
     const page = Math.min(query.page, Math.max(1, Math.ceil(total / pageSize)));
-    const rows = await tx.select().from(books).where(where).orderBy(asc(books.receiptFrom), asc(books.id))
+    const rows = await tx.select().from(books).where(where).orderBy(asc(books.bookType), asc(books.editionNumber), asc(books.editionBookNumber), asc(books.receiptFrom), asc(books.id))
       .limit(pageSize).offset((page - 1) * pageSize);
     return { rows: rows.map(serialize), total, page, pageSize };
   });

@@ -19,11 +19,12 @@ export const receiptValuesSchema = z.strictObject({
   heads: z.array(z.strictObject({ categoryId: id, headId: id, purpose: z.string().trim().max(300), amountPaise: money })).max(20),
   receiverName: z.string().trim().max(120), responsibility: z.string().trim().max(120), donorSigned: z.boolean(), receiverSigned: z.boolean(), remarks: z.string().trim().max(1000),
 });
-export const receiptRecordSchema = z.object({ id: z.uuid(), number: z.number().int(), version: z.number().int(), checked: z.boolean(), values: receiptValuesSchema,
+export const receiptRecordSchema = z.object({ id: z.uuid(), number: z.number().int(), version: z.number().int(), checked: z.boolean(), values: receiptValuesSchema, historicalSummary: z.boolean().default(false),
   labels: z.record(z.string(), z.object({ nameEn: z.string(), nameUr: z.string(), needsDetail: z.boolean().default(false) })), hasPhoto: z.boolean(), updatedAt: z.iso.datetime(), entryByName: z.string() });
 export const receiptHeaderSchema = z.object({ returned: returnRowSchema, assignmentDate: z.iso.date(), editionEn: z.string(), editionUr: z.string(),
   collectorId: z.uuid(), collectorCode: z.string(), phone: z.string(), address: z.string(), hasPhoto: z.boolean(),
   assignmentNumber: z.string(), expectedReturnDate: z.iso.date(), submissionPending: z.boolean(),
+  historicalOpen: z.boolean(), collectionExpandable: z.boolean().default(false), entryEndDate: z.iso.date(),
   bookType: z.enum(["REGULAR", "TOKEN"]), tokenValuePaise: z.number().int().nullable(), version: z.number().int(), finalized: z.boolean() });
 export const receiptEditSchema = z.object({ id: z.uuid(), returnId: z.uuid(), receiptId: z.uuid(), receiptNumber: z.number().int(), requestedBy: z.uuid(), requestedByName: z.string(),
   reason: z.string(), baseVersion: z.number().int(), status: z.enum(["PENDING", "APPROVED", "REJECTED", "USED"]), reviewNote: z.string(), createdAt: z.iso.datetime() });
@@ -50,6 +51,7 @@ export const receiptActionSchema = z.discriminatedUnion("action", [
     checked: z.boolean().default(false),
     page: z.number().int().positive().max(100000000) }),
   z.strictObject({ action: z.literal("FINALIZE"), version: z.number().int().min(0), page: z.number().int().positive().max(100000000) }),
+  z.strictObject({ action: z.literal("REOPEN"), version: z.number().int().min(0), reason: z.string().trim().min(3).max(1000), page: z.number().int().positive().max(100000000) }),
 ]);
 export const receiptWorkflowActionSchema = z.discriminatedUnion("action", [
   z.strictObject({ action: z.literal("RAISE_ISSUE"), returnId: z.uuid(), number: z.number().int().positive().max(2147483647), reason: z.string().trim().min(3).max(1000) }),
@@ -72,7 +74,7 @@ export const donorSuggestionsSchema = z.object({ data: z.array(donorSuggestionSc
 export type DonorSuggestion = z.infer<typeof donorSuggestionSchema>;
 
 export function receiptComplete(value: ReceiptValues, header: ReceiptHeader) {
-  if (!value.date || value.date < header.assignmentDate || value.date > header.returned.returnDate) return false;
+  if (!value.date || value.date < header.assignmentDate || value.date > header.entryEndDate) return false;
   if (value.status !== "VALID") return value.amountPaise === 0 && Boolean(value.reasonId) && value.heads.length === 0;
   if (value.amountPaise === null || value.amountPaise <= 0 || !value.amountWords || value.receiverName.length < 2
     || (!value.anonymous && (value.donorName.length < 2 || !VALIDATION_PATTERNS.indianMobile.test(value.phone)))
@@ -88,14 +90,14 @@ export function receiptComplete(value: ReceiptValues, header: ReceiptHeader) {
 export function newReceipt(number: number, header: ReceiptHeader): ReceiptValues {
   const exception = header.returned.exceptions.find((row) => row.receiptNumber === number);
   const amount = exception ? 0 : header.tokenValuePaise;
-  return { status: exception?.status ?? "VALID", date: header.returned.returnDate, reasonId: exception?.reasonId ?? "", anonymous: false,
+  return { status: exception?.status ?? "VALID", date: header.historicalOpen || number > (header.returned.lastUsed ?? 0) ? header.entryEndDate : header.returned.returnDate, reasonId: exception?.reasonId ?? "", anonymous: false,
     donorName: "", parentage: "S/O", parentName: "", phone: "", email: "", marhoomName: "", pan: "", village: "", postOffice: "", block: "", district: "", state: "Odisha", pin: "",
     amountPaise: amount, amountWords: amount === null ? "" : amountInWords(amount), paymentMode: "CASH", upiAppId: "", reference: "", transactionDate: "", chequeNumber: "", bankId: "", branch: "", chequeDate: "",
     heads: exception ? [] : [{ categoryId: "", headId: "", purpose: "", amountPaise: amount }], receiverName: header.returned.collectorName, responsibility: "", donorSigned: false, receiverSigned: false, remarks: "" };
 }
 export function receiptRemaining(header: ReceiptHeader, totals: ReceiptTotals, previous: ReceiptValues | undefined, mode: ReceiptValues["paymentMode"] | "TOTAL") {
   const oldAmount = previous?.status === "VALID" && (mode === "TOTAL" || previous.paymentMode === mode) ? previous.amountPaise ?? 0 : 0;
-  const expected = mode === "CASH" ? header.returned.cashPaise : mode === "DIGITAL" ? header.returned.digitalPaise : header.returned.totalPaise;
+  const expected = header.historicalOpen || header.collectionExpandable ? 999_999_999_999 : mode === "CASH" ? header.returned.cashPaise : mode === "DIGITAL" ? header.returned.digitalPaise : header.returned.totalPaise;
   const entered = mode === "CASH" ? totals.cash : mode === "DIGITAL" ? totals.digital : totals.total;
   return Math.max(0, expected - entered + oldAmount);
 }

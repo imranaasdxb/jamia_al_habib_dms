@@ -114,7 +114,7 @@ export function BookStockForm({ account, mode, onBusyChange, onSaved }: {
       {mode === "BULK" ? field("bookCount", "booksBookCount", "number", { min: 1, max: 150 })
         : values.bookType === "TOKEN" ? <BookMasterSelect accountId={account.id} kind="TOKEN_VALUE" label="mastersTokenValues" required value={values.tokenValue}
         error={Boolean(errors.tokenValue)} onChange={(value) => {
-          if (value === "" || value === "10" || value === "20" || value === "50") setValue("tokenValue", value, { shouldDirty: true, shouldValidate: true });
+          if (value === "" || value === "10" || value === "100" || value === "50") setValue("tokenValue", value, { shouldDirty: true, shouldValidate: true });
         }} /> : <AuthField id="stock-total" label={t("booksTotalReceipts")} value={validCount ? receiptCount : "—"} readOnly />}
       </div>
       <div className="grid grid-cols-1 items-start gap-5 sm:grid-cols-2">
@@ -135,7 +135,7 @@ export function BookStockForm({ account, mode, onBusyChange, onSaved }: {
       {mode === "BULK" && values.bookType === "TOKEN" && <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <BookMasterSelect accountId={account.id} kind="TOKEN_VALUE" label="mastersTokenValues" required value={values.tokenValue}
           error={Boolean(errors.tokenValue)} onChange={(value) => {
-            if (value === "" || value === "10" || value === "20" || value === "50") setValue("tokenValue", value, { shouldDirty: true, shouldValidate: true });
+            if (value === "" || value === "10" || value === "100" || value === "50") setValue("tokenValue", value, { shouldDirty: true, shouldValidate: true });
           }} />
       </div>}
     {mode === "SINGLE" && values.bookType === "TOKEN" && <div className={"books-calculated grid grid-cols-[repeat(2,_minmax(0,_1fr))] gap-[18px] p-[20px] bg-[var(--primary-soft)] [border:1px_solid_var(--border)] rounded-[var(--radius)] [&_>_div]:grid [&_>_div]:gap-[8px] [&_span]:text-[length:11px] [&_span]:text-[color:var(--muted-foreground)] [&_strong]:text-[length:22px] [&_strong]:text-[color:var(--primary)]"}><div><span>{t("booksTotalReceipts")}</span><strong>{validCount ? receiptCount : "—"}</strong></div>

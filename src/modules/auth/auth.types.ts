@@ -2,7 +2,7 @@ export interface Account {
   id: string;
   fullName: string;
   email: string;
-  role: "ADMIN" | "STAFF";
+  role: "SUPER_ADMIN" | "ADMIN";
   language: "en" | "ur";
   hasPhoto?: boolean;
 }

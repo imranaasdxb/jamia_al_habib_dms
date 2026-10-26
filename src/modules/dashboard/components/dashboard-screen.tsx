@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, ArrowUp, BookOpen, CalendarDays, ChevronRight, ClipboardCheck,
+import { ArrowRight, ArrowUp, ArrowUpRight, BookOpen, CalendarDays, ChevronRight, ClipboardCheck,
   Clock3, Flag, Plus, TriangleAlert, Users, Wallet } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { usePageState } from "@/components/page-data-provider";
@@ -46,13 +46,13 @@ export function DashboardScreen({ account }: { account: Account }) {
 
   return (
     <AppShell account={account} search={search} onSearchChange={setSearch}>
-      <div className={"page-header flex justify-between items-center gap-[20px] mb-[22px]"}>
+      <div className={"page-header mb-5 flex items-center justify-between gap-5"}>
         <div>
           <h1 className={"page-title text-[length:34px] font-bold tracking-[-1.3px] [html[lang='ur']_&]:tracking-0"}>{t("dashboard")}</h1>
           <p className={"page-subtitle text-[color:var(--muted-foreground)] mt-[7px]"}>{t("dashboardDate")}</p>
         </div>
         <div className={"header-actions flex items-center gap-[12px]"}>
-          <label className={"period-select flex items-center gap-[10px] p-[0_13px] min-h-[44px] bg-[var(--card)] [border:1px_solid_var(--border)] rounded-[var(--radius-control)] [&_select]:bg-[transparent] [&_select]:[border:0] [&_select]:text-[color:var(--foreground)] [&_select]:p-[9px_6px]"}>
+          <label className={"period-select flex min-h-9 items-center gap-2 rounded-full border border-border bg-card px-3 text-xs [&_select]:border-0 [&_select]:bg-transparent [&_select]:py-2 [&_select]:text-xs [&_select]:text-foreground"}>
             <CalendarDays size={17} aria-hidden="true" />
             <select aria-label={t("date")} value={period} onChange={(event) => {
               setPeriod(event.target.value === "lastMonth" ? "lastMonth" : "thisMonth");
@@ -62,31 +62,37 @@ export function DashboardScreen({ account }: { account: Account }) {
               <option value="lastMonth">{t("lastMonth")}</option>
             </select>
           </label>
-          <Button onClick={() => setDialog("addDonation")}>
+          <Button className="min-h-9 rounded-full px-4 py-2 text-xs" onClick={() => setDialog("addDonation")}>
             <Plus size={19} aria-hidden="true" />{t("addDonation")}
           </Button>
         </div>
       </div>
 
-      <div className={"stats-grid grid grid-cols-[repeat(4,_minmax(0,_1fr))] gap-[var(--space-gap)]"}>
+      <div className={"stats-grid grid grid-cols-4 gap-3"}>
         {stats.map((stat) => (
-          <Card key={stat.label} className={`stat-card p-[var(--space-panel)] min-h-[172px] ${stat.primary ? "stat-primary bg-[var(--primary)] text-[color:var(--primary-foreground)] [border-color:var(--primary)] [&_.stat-caption]:text-[color:var(--primary-foreground)]" : ""}`}>
-            <span className={"stat-icon inline-flex items-center justify-center w-[40px] h-[40px] bg-[var(--primary-soft)] text-[color:var(--primary)] rounded-[50%]"}><stat.icon size={21} aria-hidden="true" /></span>
-            <span className={"stat-label block text-[length:12px] mt-[13px]"}>{t(stat.label)}</span>
-            <strong className={"stat-value block text-[length:33px] tracking-[-1px] font-bold mt-[6px] numeric tabular-nums"} dir="ltr">{stat.value}</strong>
-            <p className={"stat-caption flex items-center gap-[6px] mt-[10px] text-[length:11px] text-[color:var(--muted-foreground)]"}>
-              {stat.primary && period === "thisMonth" && <><ArrowUp size={13} />12%</>}
+          <Card key={stat.label} className={`stat-card flex min-h-[156px] min-w-0 flex-col rounded-[18px] p-4 shadow-[0_3px_12px_rgb(16_27_46/3%)] ${stat.primary ? "border-primary bg-primary text-primary-foreground" : "border-card bg-card"}`}>
+            <div className="flex items-start justify-between gap-3">
+              <span className="text-xs font-medium leading-relaxed">{t(stat.label)}</span>
+              <button type="button" onClick={() => setDialog(stat.label)} aria-label={t(stat.label)}
+                className={`flex size-7 shrink-0 items-center justify-center rounded-full border transition-colors ${stat.primary ? "border-white/25 bg-white text-primary hover:bg-white/90" : "border-border text-foreground hover:border-primary hover:text-primary"}`}>
+                <ArrowUpRight size={15} strokeWidth={1.7} aria-hidden="true" />
+              </button>
+            </div>
+            <strong className="mt-3 block text-[32px] font-semibold leading-none tracking-tight tabular-nums" dir="ltr">{stat.value}</strong>
+            <p className={`mt-auto flex items-center gap-1.5 pt-3 text-[10px] leading-relaxed ${stat.primary ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+              <stat.icon size={13} strokeWidth={1.6} aria-hidden="true" />
+              {stat.primary && period === "thisMonth" && <><ArrowUp size={12} />12%</>}
               {t(stat.caption)}
             </p>
           </Card>
         ))}
       </div>
 
-      <div className={"dashboard-grid grid grid-cols-[minmax(0,_1.65fr)_minmax(340px,_1fr)] gap-[var(--space-gap)] mt-[var(--space-gap)] items-stretch"}>
+      <div className={"dashboard-grid mt-4 grid grid-cols-1 items-stretch gap-4 xl:grid-cols-12"}>
         <DashboardCharts period={period} accountId={account.id} />
-        <Card className={"panel p-[var(--space-panel)] min-w-0"}>
+        <Card className={"panel order-4 min-w-0 rounded-[18px] border-card p-[var(--space-panel)] shadow-[0_3px_12px_rgb(16_27_46/3%)] xl:col-span-8 2xl:col-span-12"}>
           <div className={"panel-header flex items-center justify-between gap-[12px]"}>
-            <h2 className={"panel-title flex items-center gap-[11px] text-[length:16px] font-[650] [&_>_svg]:text-[color:var(--primary)]"}><Clock3 size={21} />{t("recentDonations")}</h2>
+            <h2 className={"panel-title flex items-center gap-2 text-sm font-semibold [&_>_svg]:size-4 [&_>_svg]:text-primary"}><Clock3 size={21} />{t("recentDonations")}</h2>
             <button type="button" className={"text-link text-[color:var(--primary)] bg-[transparent] [border:0] p-[5px_0] inline-flex gap-[6px] items-center text-[length:11px] font-semibold"} onClick={() => setShowAll(!showAll)}>
               {t(showAll ? "showLess" : "viewAll")}<ArrowRight size={14} className={"directional-icon [html[dir='rtl']_&]:[transform:scaleX(-1)]"} />
             </button>
@@ -117,8 +123,8 @@ export function DashboardScreen({ account }: { account: Account }) {
             </table>
           </div>
         </Card>
-        <Card className={"panel p-[var(--space-panel)] min-w-0"}>
-          <h2 className={"panel-title flex items-center gap-[11px] text-[length:16px] font-[650] [&_>_svg]:text-[color:var(--primary)]"}><TriangleAlert size={22} />{t("needsAttention")}</h2>
+        <Card className={"panel order-3 min-w-0 rounded-[18px] border-card p-[var(--space-panel)] shadow-[0_3px_12px_rgb(16_27_46/3%)] xl:col-span-4 2xl:col-span-3"}>
+          <h2 className={"panel-title flex items-center gap-2 text-sm font-semibold [&_>_svg]:size-4 [&_>_svg]:text-primary"}><TriangleAlert size={22} />{t("needsAttention")}</h2>
           <div className={"attention-list mt-[20px]"}>
             {attention.map(({ label, description, icon: Icon, warning }) => (
               <button key={label} type="button" className={"attention-row flex items-center gap-[12px] w-full p-[17px_0] bg-[transparent] text-[color:var(--foreground)] [border:0] [border-top:1px_solid_var(--border)] text-start [&:first-child]:[border-top:0]"} onClick={() => setDialog(label)}>

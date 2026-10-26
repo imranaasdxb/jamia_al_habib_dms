@@ -6,6 +6,6 @@ export const dynamic = "force-dynamic";
 
 export default async function EditionsPage() {
   const account = await requireAccount();
-  if (account.role !== "ADMIN") redirect("/dashboard");
+  if (account.role !== "SUPER_ADMIN") redirect("/dashboard");
   return <MastersScreen account={account} editionOnly />;
 }

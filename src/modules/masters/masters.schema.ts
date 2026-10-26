@@ -5,13 +5,13 @@ export const MASTER_KINDS = ["EDITION", "BOOK_TYPE", "TOKEN_VALUE", "DONATION_CA
   "PAYMENT_MODE", "UPI_APP", "BANK", "BANK_ACCOUNT", "RECEIPT_REASON", "FLAG_REASON"] as const;
 export const masterKindSchema = z.enum(MASTER_KINDS);
 export const masterValuesSchema = z.strictObject({
-  code: z.string().trim().min(1).max(40).regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/).transform((value) => value.toUpperCase()),
-  nameEn: z.string().trim().min(2).max(120), nameUr: z.string().trim().min(2).max(120),
+  code: z.union([z.literal(""), z.string().trim().min(1).max(40).regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/)]).transform((value) => value.toUpperCase()),
+  nameEn: z.string().trim().min(2).max(120), nameUr: z.union([z.literal(""), z.string().trim().min(2).max(120)]),
   active: z.boolean(), notes: z.string().trim().max(1000),
   edition: editionValuesSchema.nullable(), needsDetail: z.boolean(),
-  level: z.enum(["", "STATE", "DISTRICT", "BLOCK", "VILLAGE"]),
+  level: z.enum(["", "COLLECTION", "STATE", "DISTRICT", "BLOCK", "VILLAGE"]),
   parentId: z.union([z.literal(""), z.uuid()]),
-  tokenValue: z.enum(["", "10", "20", "50"]),
+  tokenValue: z.enum(["", "10", "20", "50", "100"]),
   accountName: z.union([z.literal(""), z.string().trim().min(2).max(120)]), lastFour: z.union([z.literal(""), z.string().regex(/^\d{4}$/)]),
   upiId: z.union([z.literal(""), z.string().trim().max(200).regex(/^[a-zA-Z0-9._-]{2,128}@[a-zA-Z0-9][a-zA-Z0-9._-]{1,63}$/)]),
 });
@@ -22,26 +22,29 @@ export function masterEditorSchema(kind: MasterKind) {
     const required = (field: keyof MasterValues) => {
       if (!values[field]) context.addIssue({ code: "custom", path: [field], message: "Required" });
     };
+    if (kind !== "AREA") { required("code"); required("nameUr"); }
     if (kind === "EDITION" && (!values.edition || values.edition.editionCode !== values.code)) {
       context.addIssue({ code: "custom", path: ["edition"], message: "Edition details required" });
     }
     if (kind === "AREA") {
       required("level");
-      if (values.level !== "STATE") required("parentId");
-      else if (values.parentId) context.addIssue({ code: "custom", path: ["parentId"], message: "State has no parent" });
+      if (values.level !== "STATE" && values.level !== "COLLECTION") required("parentId");
+      else if (values.level === "STATE" && values.parentId) context.addIssue({ code: "custom", path: ["parentId"], message: "State has no parent" });
     }
     if (kind === "TOKEN_VALUE") required("tokenValue");
     if (kind === "DONATION_HEAD") required("parentId");
     if (kind === "BANK_ACCOUNT") { required("parentId"); required("accountName"); required("lastFour"); }
   });
 }
-export const masterRowSchema = masterValuesSchema.extend({ edition: editionValuesSchema.nullable().default(null), id: z.uuid(), kind: masterKindSchema,
+export const masterRowSchema = masterValuesSchema.extend({ edition: editionValuesSchema.nullable().default(null), hasReceiptSample: z.boolean().default(false), id: z.uuid(), kind: masterKindSchema,
   builtIn: z.boolean(), updatedAt: z.iso.datetime(), parentNameEn: z.string(), parentNameUr: z.string() });
 export const masterQuerySchema = z.object({
   parentId: z.uuid().optional(),
+  bookType: z.enum(["REGULAR", "TOKEN"]).optional(),
+  geographyOnly: z.enum(["YES"]).optional(),
   kind: masterKindSchema, search: z.string().trim().max(100).default(""),
   status: z.enum(["ALL", "ACTIVE", "INACTIVE"]).default("ALL"),
-  level: z.enum(["", "STATE", "DISTRICT", "BLOCK", "VILLAGE"]).default(""),
+  level: z.enum(["", "COLLECTION", "STATE", "DISTRICT", "BLOCK", "VILLAGE"]).default(""),
   page: z.coerce.number().int().min(1).max(100000).default(1),
 });
 export const masterSubmissionSchema = z.strictObject({ kind: masterKindSchema, values: masterValuesSchema,
@@ -52,7 +55,7 @@ export const masterSubmissionSchema = z.strictObject({ kind: masterKindSchema, v
 export const mastersResponseSchema = z.object({ data: z.array(masterRowSchema),
   meta: z.object({ total: z.number(), page: z.number(), pageSize: z.number() }) });
 export const masterOptionSchema = masterRowSchema.pick({ id: true, nameEn: true, nameUr: true }).extend({
-  needsDetail: z.boolean().optional(), code: z.string().optional(), tokenValue: z.enum(["", "10", "20", "50"]).optional(),
+  needsDetail: z.boolean().optional(), code: z.string().optional(), tokenValue: z.enum(["", "10", "20", "50", "100"]).optional(),
 });
 export const masterOptionsResponseSchema = z.object({ data: z.array(masterOptionSchema),
   meta: z.object({ total: z.number(), page: z.number(), pageSize: z.number() }) });

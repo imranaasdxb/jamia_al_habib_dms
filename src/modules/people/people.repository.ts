@@ -1,13 +1,13 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { and, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getAccountContext } from "@/lib/auth/session";
 import { withRequestDatabase } from "@/lib/db";
 import { collectorEditRequests, collectors, people } from "@/lib/db/schema";
 import { readProfilePhoto, removeProfilePhoto, uploadProfilePhoto } from "@/lib/storage/profile-photos";
 import { AuthFailure } from "@/modules/auth/auth.types";
-import { collectorAssignmentOptionSchema, collectorRequestSchema, collectorRowSchema, collectorValuesSchema } from "@/modules/people/people.schema";
+import { collectorAssignmentOptionSchema, collectorRequestSchema, collectorRowSchema, collectorStoredValuesSchema, collectorValuesSchema } from "@/modules/people/people.schema";
 import type { RequestDatabase } from "@/lib/db";
 import type { CollectorQuery, CollectorRow, CollectorSubmission, CollectorValues } from "@/modules/people/people.schema";
 
@@ -38,6 +38,7 @@ function collectorQuery(tx: RequestDatabase) {
     code: collectors.code, fatherName: collectors.fatherName, whatsapp: collectors.whatsapp,
     idProofName: collectors.idProofName, commissionBasisPoints: collectors.commissionBasisPoints,
     leftoverEligible: collectors.leftoverEligible,
+    collectionAreaName: sql<string>`coalesce((select a.name_en from public.master_records a where a.id = ${collectors.collectionAreaId}), '')`,
     village: collectors.village, postOffice: collectors.postOffice, block: collectors.block,
     district: collectors.district, state: collectors.state, pin: collectors.pin,
   }).from(people).innerJoin(collectors, eq(collectors.personId, people.id));
@@ -45,7 +46,7 @@ function collectorQuery(tx: RequestDatabase) {
 type CollectorRecord = Awaited<ReturnType<typeof collectorQuery>>[number];
 function serialize(row: CollectorRecord): CollectorRow {
   const { photoKey, commissionBasisPoints, ...publicValues } = row;
-  return collectorRowSchema.parse({ ...publicValues, email: row.email ?? "", age: String(row.age),
+  return collectorRowSchema.parse({ ...publicValues, email: row.email ?? "", phone: row.phone ?? "", age: row.age === null ? "" : String(row.age),
     updatedAt: row.updatedAt.toISOString(), hasPhoto: photoKey !== null,
     commission: commissionBasisPoints === null ? "" : String(commissionBasisPoints / 100) });
 }
@@ -67,7 +68,9 @@ export async function listCollectors(query: CollectorQuery) {
       query.view === "ASSIGNMENT" ? eq(people.status, "ACTIVE") : query.status === "ALL" ? undefined : eq(people.status, query.status),
       query.leftoverEligible === "YES" ? eq(collectors.leftoverEligible, true) : undefined,
       query.search ? or(ilike(people.fullName, term), ilike(people.phone, term), ilike(people.email, term), ilike(collectors.code, term)) : undefined,
-      query.area ? or(ilike(collectors.village, area), ilike(collectors.district, area), ilike(collectors.block, area)) : undefined);
+      query.area ? or(ilike(collectors.village, area), ilike(collectors.district, area), ilike(collectors.block, area),
+        sql`exists (select 1 from public.master_records a where a.id = ${collectors.collectionAreaId}
+          and (a.name_en ilike ${area} or a.name_ur ilike ${area}))`) : undefined);
     const [result] = await tx.select({ total: count() }).from(people)
       .innerJoin(collectors, eq(collectors.personId, people.id)).where(where);
     const total = result?.total ?? 0;
@@ -81,10 +84,13 @@ export async function listCollectors(query: CollectorQuery) {
       }).from(people).innerJoin(collectors, eq(collectors.personId, people.id)).where(where)
         .orderBy(desc(people.createdAt), desc(people.id)).limit(pageSize).offset((page - 1) * pageSize);
       return { collectors: rows.map(({ commissionBasisPoints, age, photoVersion, ...row }) =>
-        collectorAssignmentOptionSchema.parse({ ...row, age: String(age), photoVersion: photoVersion.toISOString(),
+        collectorAssignmentOptionSchema.parse({ ...row, age: age === null ? "" : String(age), photoVersion: photoVersion.toISOString(),
           commission: commissionBasisPoints === null ? "" : String(commissionBasisPoints / 100) })), total, page, pageSize };
     }
-    const rows = await collectorQuery(tx).where(where).orderBy(desc(people.createdAt), desc(people.id))
+    const order = query.sort === "NAME_ASC"
+      ? [asc(sql`lower(${people.fullName})`), asc(collectors.code), asc(people.id)]
+      : [sql`coalesce(nullif(regexp_replace(${collectors.code}, '[^0-9]', '', 'g'), '')::numeric, 0) asc`, asc(collectors.code), asc(people.id)];
+    const rows = await collectorQuery(tx).where(where).orderBy(...order)
       .limit(pageSize).offset((page - 1) * pageSize);
     return { collectors: rows.map(serialize), total, page, pageSize };
   });
@@ -112,7 +118,7 @@ async function applyChanges(tx: RequestDatabase, actorId: string, id: string, va
 
 export async function setCollectorEligibility(id: string, input: { leftoverEligible: boolean; version: string }) {
   return withPeopleDatabase(async (tx, { account }) => {
-    if (account.role !== "ADMIN") throw new AuthFailure("ACCESS_DENIED");
+    if (account.role !== "SUPER_ADMIN") throw new AuthFailure("ACCESS_DENIED");
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`dms:collector:${id}`}))`);
     const previous = await findCollector(tx, id, true);
     if (previous.updatedAt.toISOString() !== input.version) throw new AuthFailure("STALE_COLLECTOR", 409);
@@ -125,6 +131,54 @@ export async function setCollectorEligibility(id: string, input: { leftoverEligi
       .where(eq(collectors.personId, id));
     return serialize(await findCollector(tx, id));
   });
+}
+
+export async function setCollectorStatus(id: string, input: { status: "ACTIVE" | "INACTIVE" | "BLOCKED"; version: string }) {
+  return withPeopleDatabase(async (tx, { account }) => {
+    if (account.role !== "SUPER_ADMIN") throw new AuthFailure("ACCESS_DENIED");
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`dms:collector:${id}`}))`);
+    const previous = await findCollector(tx, id, true);
+    if (previous.updatedAt.toISOString() !== input.version) throw new AuthFailure("STALE_COLLECTOR", 409);
+    if (previous.status === input.status) return serialize(previous);
+    await tx.execute(sql`select set_config('app.change_reason', ${`Fundraiser status changed to ${input.status}`}, true)`);
+    const updatedAt = new Date();
+    await tx.update(people).set({ status: input.status, updatedAt, updatedBy: account.id }).where(eq(people.id, id));
+    await tx.update(collectors).set({ updatedAt, updatedBy: account.id }).where(eq(collectors.personId, id));
+    return serialize(await findCollector(tx, id));
+  });
+}
+
+export async function deleteCollector(id: string, input: { version: string }) {
+  let deleted: { id: string; photoKeys: string[] };
+  try {
+    deleted = await withPeopleDatabase(async (tx, { account }) => {
+      if (account.role !== "SUPER_ADMIN") throw new AuthFailure("ACCESS_DENIED");
+      const [result] = await tx.execute<{ deleted: { id: string; photoKeys: string[] } }>(sql`
+        select public.delete_collector_profile(${id}::uuid, ${input.version}::timestamptz) as deleted`);
+      if (!result?.deleted) throw new AuthFailure("COLLECTOR_NOT_FOUND", 404);
+      return result.deleted;
+    });
+  } catch (error) {
+    const cause = error instanceof Error ? error.cause : undefined;
+    const codes: Record<string, { code: string; status: number }> = {
+      P2101: { code: "COLLECTOR_NOT_FOUND", status: 404 },
+      P2102: { code: "STALE_COLLECTOR", status: 409 },
+      P2103: { code: "COLLECTOR_HAS_HISTORY", status: 409 },
+      "23503": { code: "COLLECTOR_HAS_HISTORY", status: 409 },
+      "42501": { code: "ACCESS_DENIED", status: 403 },
+      "42883": { code: "COLLECTOR_DELETE_SETUP_REQUIRED", status: 503 },
+    };
+    for (const value of [error, cause]) {
+      if (typeof value === "object" && value !== null && "code" in value && typeof value.code === "string") {
+        const failure = codes[value.code];
+        if (failure) throw new AuthFailure(failure.code, failure.status);
+      }
+    }
+    throw error;
+  }
+  // Profile records are committed before removing their private storage objects.
+  const cleanup = await Promise.allSettled([...new Set(deleted.photoKeys)].map((key) => removeProfilePhoto(key)));
+  return { id: deleted.id, photoCleanupPending: cleanup.some((result) => result.status === "rejected") };
 }
 
 export async function saveCollector(input: CollectorSubmission, photo: File | null, existingId?: string) {
@@ -145,16 +199,16 @@ export async function saveCollector(input: CollectorSubmission, photo: File | nu
       }
       // Serialize edits/reviews without granting Staff UPDATE access to collector records.
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`dms:collector:${id}`}))`);
-      const previous = await findCollector(tx, id, account.role === "ADMIN");
+      const previous = await findCollector(tx, id, account.role === "SUPER_ADMIN");
       if (previous.updatedAt.toISOString() !== input.version) throw new AuthFailure("STALE_COLLECTOR", 409);
       const photoChanged = Boolean(photo) || input.removePhoto;
       const photoKey = photo ? uploadedKey : input.removePhoto ? null : previous.photoKey;
-      if (account.role === "STAFF") {
+      if (account.role === "ADMIN") {
         const [pending] = await tx.select({ id: collectorEditRequests.id }).from(collectorEditRequests)
           .where(and(eq(collectorEditRequests.collectorId, id), eq(collectorEditRequests.status, "PENDING"), isNull(collectorEditRequests.deletedAt))).limit(1);
         if (pending) throw new AuthFailure("COLLECTOR_REQUEST_PENDING", 409);
         await tx.insert(collectorEditRequests).values({ collectorId: id, requestedBy: account.id,
-          version: previous.updatedAt.toISOString(), oldValues: collectorValuesSchema.strip().parse(serialize(previous)), newValues: input.values,
+          version: previous.updatedAt.toISOString(), oldValues: collectorStoredValuesSchema.strip().parse(serialize(previous)), newValues: input.values,
           reason: input.reason, photoChanged, proposedPhotoKey: photoChanged ? photoKey : null,
           oldHasPhoto: previous.photoKey !== null, createdBy: account.id, updatedBy: account.id });
         return { requested: true, collector: serialize(previous), oldKey: null };
@@ -203,7 +257,7 @@ export async function listCollectorRequests(page: number) {
 
 export async function reviewCollectorRequest(id: string, decision: "APPROVED" | "REJECTED", note: string) {
   const result = await withPeopleDatabase(async (tx, { account }) => {
-    if (account.role !== "ADMIN") throw new AuthFailure("ACCESS_DENIED");
+    if (account.role !== "SUPER_ADMIN") throw new AuthFailure("ACCESS_DENIED");
     const [request] = await tx.select().from(collectorEditRequests)
       .where(and(eq(collectorEditRequests.id, id), isNull(collectorEditRequests.deletedAt))).limit(1);
     if (!request) throw new AuthFailure("COLLECTOR_NOT_FOUND", 404);

@@ -95,9 +95,9 @@ export function UsersScreen({ account }: { account: Account }) {
         <select className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)] users-filter-role w-[165px]"} aria-label={t("usersRole")} value={role}
           onChange={(event) => {
             const value = event.target.value;
-            if (value === "ALL" || value === "ADMIN" || value === "STAFF") { setRole(value); setPage(1); }
-          }}><option value="ALL">{t("usersAllRoles")}</option><option value="ADMIN">{t("superAdmin")}</option>
-          <option value="STAFF">{t("staff")}</option></select>
+            if (value === "ALL" || value === "SUPER_ADMIN" || value === "ADMIN") { setRole(value); setPage(1); }
+          }}><option value="ALL">{t("usersAllRoles")}</option><option value="SUPER_ADMIN">{t("superAdmin")}</option>
+          <option value="ADMIN">{t("staff")}</option></select>
         <Button variant="outline" size="icon" loading={loading} aria-label={t("usersRefresh")}
           title={t("usersRefresh")} onClick={invalidate}><RefreshCw size={17} aria-hidden="true" /></Button>
       </div>
@@ -131,7 +131,7 @@ export function UsersScreen({ account }: { account: Account }) {
         <span className={"user-card-avatar relative inline-flex items-center justify-center w-[88px] h-[88px] mt-[-43px] shrink-0 [border:5px_solid_var(--card)] rounded-[50%] bg-[var(--accent)] text-[color:var(--primary)] overflow-hidden [&_img]:absolute [&_img]:inset-0 [&_img]:w-full [&_img]:h-full [&_img]:object-cover"}>{viewing.fullName.slice(0, 2).toUpperCase()}
           {viewing.hasPhoto && <img alt="" src={`/api/v1/users/${viewing.id}/photo?v=${encodeURIComponent(viewing.updatedAt)}`}
             onError={(event) => { event.currentTarget.hidden = true; }} />}</span>
-        <h3>{viewing.fullName}</h3><p className={"muted text-[color:var(--muted-foreground)]"}>{t(viewing.role === "ADMIN" ? "superAdmin" : "staff")}</p>
+        <h3>{viewing.fullName}</h3><p className={"muted text-[color:var(--muted-foreground)]"}>{t(viewing.role === "SUPER_ADMIN" ? "superAdmin" : "staff")}</p>
         <dl>{([["email", viewing.email], ["usersMobile", viewing.phone], ["usersAge", viewing.age],
           ["usersGender", t(viewing.gender === "MALE" ? "usersMale" : viewing.gender === "FEMALE" ? "usersFemale"
             : viewing.gender === "OTHER" ? "usersOther" : "usersUnspecified")],

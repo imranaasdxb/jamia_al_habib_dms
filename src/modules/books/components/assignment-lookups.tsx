@@ -31,7 +31,7 @@ function FundraiserProfile({ row }: { row: FundraiserOption }) {
         <span className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-[10px] text-[var(--primary)]">{t("usersActive")}</span></span>
       <span className="mt-1 block truncate text-[11px] text-[var(--muted-foreground)]">{row.code} · {row.village}</span>
       <span className="mt-1 flex flex-wrap gap-x-3 text-[11px] text-[var(--muted-foreground)]">
-        <span>{t("usersAge")}: {row.age}</span><span>{t("peopleCommission")}: {row.commission ? `${row.commission}%` : "—"}</span>
+        <span>{t("usersAge")}: {row.age || "—"}</span><span>{t("peopleCommission")}: {row.commission ? `${row.commission}%` : "—"}</span>
       </span>
     </span>
   </span>;
@@ -69,44 +69,46 @@ export function AssignmentFundraiser({ accountId, value, initialId, initialCode,
   const query = usePageQuery(`${accountId}:people:${leftoverOnly ? "eligible:" : ""}query:assignment-options:${params}`, fetchData,
     { enabled: open || Boolean(initialId && !value) });
   const loading = search.trim() !== debouncedSearch || query.loading || query.stale;
-  const rows = query.data?.collectors ?? [];
+  const rows = (query.data?.collectors ?? []).filter((row) => row.status === "ACTIVE");
   function choose(row: FundraiserOption) {
     if (row.status !== "ACTIVE" || excludedIds.includes(row.id) || (leftoverOnly && !row.leftoverEligible)) return;
     onChange(row); setOpen(false);
-    root.current?.querySelector<HTMLButtonElement>("button[data-fundraiser-trigger]")?.focus();
+    root.current?.querySelector("input")?.focus();
   }
   useEffect(() => {
     const initial = query.data?.collectors.find((row) => row.id === initialId);
-    if (initial && !value && !loading && !excludedIds.includes(initial.id) && (!leftoverOnly || initial.leftoverEligible)) onChange(initial);
+    if (initial?.status === "ACTIVE" && !value && !loading && !excludedIds.includes(initial.id) && (!leftoverOnly || initial.leftoverEligible)) onChange(initial);
   }, [query.data, loading, initialId, value, onChange, excludedIds, leftoverOnly]);
-  return <div ref={root} className="min-w-0">
+  return <div ref={root} className="min-w-0"
+    onKeyDown={(event) => {
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setOpen(false); root.current?.querySelector("input")?.focus(); return; }
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Enter") return;
+      if (!open) { event.preventDefault(); setOpen(true); return; }
+      if (loading) { event.preventDefault(); return; }
+      const options = Array.from(root.current?.querySelectorAll<HTMLButtonElement>("button[data-fundraiser-option]:not(:disabled)") ?? []);
+      if (event.target instanceof HTMLInputElement && event.key === "Enter") { event.preventDefault(); options[0]?.click(); return; }
+      if (event.key === "Enter") return;
+      event.preventDefault();
+      const index = options.indexOf(document.activeElement as HTMLButtonElement);
+      const next = event.key === "ArrowDown" ? (index + 1) % Math.max(1, options.length)
+        : index <= 0 ? options.length - 1 : index - 1;
+      options[next]?.focus();
+    }}>
     <label className="mb-2 block text-xs font-semibold" htmlFor={id}>{t("peopleCollectors")} *</label>
-    <button id={id} type="button" data-fundraiser-trigger aria-expanded={open} aria-controls={listId} aria-haspopup="listbox"
-      className="flex min-h-[47px] w-full items-center justify-between gap-3 rounded-[var(--radius-control)] border border-[var(--input)] bg-[var(--card)] px-3.5 py-3 text-start text-sm outline-none hover:border-[var(--primary)] focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
-      onClick={() => setOpen(!open)} onKeyDown={(event) => { if (event.key === "ArrowDown") { event.preventDefault(); setOpen(true); } }}>
-      {value ? <FundraiserProfile row={value} /> : <span className="text-[var(--muted-foreground)]">{t("booksChooseOption")}</span>}
-      <ChevronDown size={17} aria-hidden="true" className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
-    </button>
-    {open && <div className="mt-2 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-sm"
-      onKeyDown={(event) => {
-        if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setOpen(false); root.current?.querySelector<HTMLButtonElement>("button[data-fundraiser-trigger]")?.focus(); return; }
-        if (loading || (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Enter")) return;
-        const options = Array.from(root.current?.querySelectorAll<HTMLButtonElement>("button[data-fundraiser-option]:not(:disabled)") ?? []);
-        if (event.target instanceof HTMLInputElement && event.key === "Enter") { event.preventDefault(); options[0]?.click(); return; }
-        if (event.key === "Enter") return;
-        event.preventDefault();
-        const index = options.indexOf(document.activeElement as HTMLButtonElement);
-        const next = event.key === "ArrowDown" ? (index + 1) % Math.max(1, options.length)
-          : index <= 0 ? options.length - 1 : index - 1;
-        options[next]?.focus();
-      }}>
-      <div className="relative border-b border-[var(--border)] p-2">
-        <Search size={16} aria-hidden="true" className="pointer-events-none absolute start-5 top-6 text-[var(--muted-foreground)]" />
-        <Input type="search" value={search} maxLength={100} className="ps-9" role="combobox" aria-expanded={open}
-          aria-controls={listId} aria-autocomplete="list" aria-label={t("assignFindFundraiser")} placeholder={t("assignFindFundraiser")}
-          onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }}
-          onChange={(event) => setSearch(event.target.value)} />
-      </div>
+    <div className="relative">
+      <Search size={16} aria-hidden="true" className="pointer-events-none absolute start-3.5 top-1/2 z-10 -translate-y-1/2 text-[var(--muted-foreground)]" />
+      <Input id={id} type="text" value={open ? search : value?.fullName ?? ""} maxLength={100}
+        className="pe-10 ps-10 hover:border-[var(--primary)]" role="combobox" aria-expanded={open}
+        aria-controls={listId} aria-autocomplete="list" aria-haspopup="listbox" autoComplete="off"
+        placeholder={t("assignChooseFundraiser")} aria-label={t("assignFindFundraiser")}
+        onClick={() => setOpen(true)} onChange={(event) => { setSearch(event.target.value); setOpen(true); }} />
+      <button type="button" tabIndex={-1} aria-label={t("assignChooseFundraiser")} aria-expanded={open} aria-controls={listId}
+        className="absolute end-1 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-lg text-[var(--muted-foreground)] hover:text-[var(--primary)]"
+        onMouseDown={(event) => event.preventDefault()} onClick={() => setOpen(!open)}>
+        <ChevronDown size={17} aria-hidden="true" className={`transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+    </div>
+    {open && <div className="mt-2 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-sm">
       <div id={listId} role="listbox" aria-label={t("peopleCollectors")} aria-busy={loading}
         className="max-h-[250px] overflow-y-auto overscroll-contain p-1.5 [scrollbar-width:thin] [scrollbar-color:var(--emerald-300)_transparent]">
         {loading ? <div role="status" aria-label={t("working")} className="space-y-2 p-1">{Array.from({ length: 3 }, (_, index) =>
@@ -150,7 +152,7 @@ type Area = { id: string; nameEn: string; nameUr: string };
 export function AssignmentAreas({ accountId, value, onChange }: { accountId: string; value: Area[]; onChange: (rows: Area[]) => void }) {
   const { t, language } = useLanguage();
   const [search, setSearch] = useState(""); const [page, setPage] = useState(1);
-  const params = new URLSearchParams({ kind: "AREA", level: "", search: search.trim(), page: String(page) }).toString();
+  const params = new URLSearchParams({ kind: "AREA", level: "COLLECTION", search: search.trim(), page: String(page) }).toString();
   const fetchData = useCallback(async () => masterOptionsResponseSchema.parse(await booksRequest(`/api/v1/masters/options?${params}`)), [params]);
   const query = usePageQuery(`${accountId}:masters:options:AREA:${params}`, fetchData, { delay: search ? 300 : 0 });
   return <fieldset className={"assignment-areas min-w-0 [border:1px_solid_var(--border)] rounded-[var(--radius)] p-[14px] m-0"}><legend className={"field-label block text-[length:12px] font-semibold mb-[8px]"}>{t("assignAreas")} *</legend>

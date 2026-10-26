@@ -20,7 +20,7 @@ async function detail(tx: RequestDatabase, id: string) {
   if (!record) throw new AuthFailure("ASSIGNMENT_NOT_FOUND", 404);
   const rows = await tx.select({ book: books, closedAt: bookCases.closedAt, assignedFrom: bookCases.receiptFrom, assignedTo: bookCases.receiptTo,
     source: bookCases.source, sourceCode: bookCases.sourceCode }).from(bookCases)
-    .innerJoin(books, eq(books.id, bookCases.bookId)).where(eq(bookCases.assignmentId, id)).orderBy(asc(books.receiptFrom), asc(books.id));
+    .innerJoin(books, eq(books.id, bookCases.bookId)).where(eq(bookCases.assignmentId, id)).orderBy(asc(books.bookType), asc(books.editionNumber), asc(books.editionBookNumber), asc(books.receiptFrom), asc(books.id));
   return { assignment: serialize(record.assignment, record.openCount), books: rows.map(({ book, closedAt, ...range }) => ({ ...range,
     ...bookRowSchema.parse({ ...book, updatedAt: book.updatedAt.toISOString() }), closedAt: closedAt?.toISOString() ?? null,
   })) };
@@ -47,16 +47,17 @@ export async function listAssignments(query: AssignmentQuery) {
     return { rows: rows.map((row) => serialize(row.assignment, row.openCount)), total, page, pageSize, overdue: result?.overdue ?? 0 };
   });
 }
-export async function availableBooks(search: string, assignmentDate: string, page: number) {
+export async function availableBooks(search: string, assignmentDate: string, page: number, bookType?: "REGULAR" | "TOKEN", editionId?: string) {
   return withBooksDatabase(async (tx) => {
     const term = literalLike(search);
     const where = and(eq(books.status, "IN_STOCK"), isNull(books.deletedAt), sql`${books.stockDate} <= ${assignmentDate}::date`,
+      bookType ? eq(books.bookType, bookType) : undefined, editionId ? eq(books.editionId, editionId) : undefined,
       sql`not exists (select 1 from public.book_cases c where c.book_id = ${books.id} and c.closed_at is null)`,
       search ? or(ilike(books.bookNumber, term), ilike(books.editionNameEn, term), ilike(books.editionNameUr, term)) : undefined);
     const [result] = await tx.select({ total: count() }).from(books).where(where);
     const total = result?.total ?? 0; const pageSize = 20;
     const currentPage = Math.min(page, Math.max(1, Math.ceil(total / pageSize)));
-    const rows = await tx.select().from(books).where(where).orderBy(asc(books.receiptFrom), asc(books.id)).limit(pageSize).offset((currentPage - 1) * pageSize);
+    const rows = await tx.select().from(books).where(where).orderBy(asc(books.bookType), asc(books.editionNumber), asc(books.editionBookNumber), asc(books.receiptFrom), asc(books.id)).limit(pageSize).offset((currentPage - 1) * pageSize);
     return { rows: rows.map((row) => bookRowSchema.parse({ ...row, updatedAt: row.updatedAt.toISOString() })), total, page: currentPage, pageSize };
   });
 }
@@ -65,7 +66,7 @@ export async function createAssignment(input: AssignmentSubmission) {
   const hash = createHash("sha256").update(JSON.stringify(values)).digest("hex");
   try {
     return await withBooksDatabase(async (tx, actor) => {
-      if (values.source === "LEFTOVER" && actor.role !== "ADMIN") throw new AuthFailure("ACCESS_DENIED");
+      if (values.source === "LEFTOVER" && actor.role !== "SUPER_ADMIN") throw new AuthFailure("ACCESS_DENIED");
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext('dms:assignments:write'))`);
       const [previous] = await tx.select().from(bookAssignments).where(eq(bookAssignments.operationId, input.operationId)).limit(1);
       if (previous) {

@@ -15,16 +15,16 @@ const serialize = (row: { defaultReturnMonths: number; updatedAt: Date }) =>
 async function withSettingsAdmin<T>(operation: (transaction: RequestDatabase, actorId: string) => Promise<T>) {
   const context = await getAccountContext(true);
   if (!context) throw new AuthFailure("SESSION_EXPIRED", 401);
-  if (context.account.role !== "ADMIN") throw new AuthFailure("ACCESS_DENIED");
+  if (context.account.role !== "SUPER_ADMIN") throw new AuthFailure("ACCESS_DENIED");
   return withRequestDatabase({ email: context.identity.email, authUserId: context.identity.id }, async (transaction) => {
     // Recheck the current database role; a cached page never authorizes this endpoint.
     const [actor] = await transaction.select({ id: people.id }).from(people).where(and(
       eq(people.id, context.account.id), eq(people.authUserId, context.identity.id),
-      eq(people.role, "ADMIN"), eq(people.status, "ACTIVE"), isNull(people.deletedAt),
+      eq(people.role, "SUPER_ADMIN"), eq(people.status, "ACTIVE"), isNull(people.deletedAt),
     )).limit(1).for("share");
     if (!actor) throw new AuthFailure("ACCESS_DENIED");
     await transaction.execute(sql`select set_config('app.person_id', ${actor.id}, true),
-      set_config('app.role', 'ADMIN', true)`);
+      set_config('app.role', 'SUPER_ADMIN', true)`);
     return operation(transaction, actor.id);
   });
 }

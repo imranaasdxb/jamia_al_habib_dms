@@ -34,7 +34,7 @@ export const UserProfileCard = memo(function UserProfileCard({ user, accountId, 
       </span>
       <h3>{user.fullName}</h3>
       <span className={"user-card-role inline-flex items-center gap-[5px] mt-[7px] text-[color:var(--primary)] text-[length:11px]"}><ShieldCheck size={14} aria-hidden="true" />
-        {t(user.role === "ADMIN" ? "superAdmin" : "staff")}</span>
+        {t(user.role === "SUPER_ADMIN" ? "superAdmin" : "staff")}</span>
       <div className={"user-card-contact w-full py-[19px] mt-[16px] [border-block:1px_solid_var(--border)] [&_p]:flex [&_p]:items-center [&_p]:gap-[9px] [&_p]:text-[length:12px] [&_p]:text-[color:var(--muted-foreground)] [&_p_+_p]:mt-[12px] [&_svg]:shrink-0 [&_p_span]:min-w-0 [&_p_span]:overflow-hidden [&_p_span]:text-ellipsis [&_p_span]:whitespace-nowrap"}>
         <p><Mail size={15} aria-hidden="true" /><span dir="ltr">{user.email ?? "—"}</span></p>
         <p><Phone size={15} aria-hidden="true" /><span dir="ltr">{user.phone ?? "—"}</span></p>

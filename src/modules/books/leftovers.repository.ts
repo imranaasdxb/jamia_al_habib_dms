@@ -13,7 +13,7 @@ const eligible = sql<boolean>`(${leftoverBooks.status} = 'AVAILABLE' and ${books
   and not exists (select 1 from public.book_returns r where r.book_id = ${books.id} and r.created_at > ${bookReturns.createdAt} and r.deleted_at is null))`;
 export async function listLeftovers(query: LeftoversQuery) {
   return withBooksDatabase(async (tx, actor) => {
-    if (actor.role !== "ADMIN") throw new AuthFailure("ACCESS_DENIED");
+    if (actor.role !== "SUPER_ADMIN") throw new AuthFailure("ACCESS_DENIED");
     const term = `%${query.search.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
     const where = and(isNull(leftoverBooks.deletedAt), isNull(books.deletedAt), isNull(bookReturns.deletedAt), isNull(bookAssignments.deletedAt),
       query.status === "AVAILABLE" ? eligible : query.status === "HELD" ? or(eq(leftoverBooks.status, "HELD"), and(eq(leftoverBooks.status, "AVAILABLE"), sql`not ${eligible}`))

@@ -36,7 +36,7 @@ export function CollectorRequests({ accountId, admin, onChanged }: { accountId: 
   }
   function value(key: keyof CollectorValues, raw: string) {
     return key === "status" ? t(raw === "ACTIVE" ? "usersActive" : raw === "BLOCKED" ? "usersBlocked" : "usersInactive")
-      : key === "gender" ? t(raw === "MALE" ? "usersMale" : raw === "FEMALE" ? "usersFemale" : "usersOther")
+      : key === "gender" && raw === "UNSPECIFIED" ? "—" : key === "gender" ? t(raw === "MALE" ? "usersMale" : raw === "FEMALE" ? "usersFemale" : "usersOther")
       : key === "language" ? raw === "ur" ? "اردو" : "English" : raw || "—";
   }
   return <>

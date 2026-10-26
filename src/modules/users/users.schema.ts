@@ -5,7 +5,7 @@ export const userProfileSchema = z.strictObject({
   fullName: z.string().trim().min(2, "errorName").max(100, "errorName"),
   email: z.email("errorEmail").trim().toLowerCase().max(254, "errorEmail"),
   phone: z.string().trim().regex(VALIDATION_PATTERNS.indianMobile, "usersInvalidPhone"),
-  role: z.enum(["ADMIN", "STAFF"], { error: "usersInvalidDetails" }),
+  role: z.enum(["SUPER_ADMIN", "ADMIN"], { error: "usersInvalidDetails" }),
   language: z.enum(["en", "ur"], { error: "usersInvalidDetails" }),
   age: z.string().trim().refine((value) => value === ""
     || (Number.isInteger(Number(value)) && Number(value) >= 18 && Number(value) <= 80), "usersInvalidAge"),
@@ -41,7 +41,7 @@ export function userEditorSchema(onboarding: boolean) {
 
 export const usersQuerySchema = z.object({
   search: z.string().trim().max(100).default(""),
-  role: z.enum(["ALL", "ADMIN", "STAFF"]).default("ALL"),
+  role: z.enum(["ALL", "SUPER_ADMIN", "ADMIN"]).default("ALL"),
   page: z.coerce.number().int().min(1).max(10000).default(1),
 });
 
@@ -52,7 +52,7 @@ export type UsersQuery = z.infer<typeof usersQuerySchema>;
 export const usersResponseSchema = z.object({
   data: z.array(z.object({
     id: z.string(), fullName: z.string(), email: z.string().nullable(),
-    phone: z.string().nullable(), role: z.enum(["ADMIN", "STAFF", "COLLECTOR"]),
+    phone: z.string().nullable(), role: z.enum(["SUPER_ADMIN", "ADMIN", "COLLECTOR"]),
     status: z.enum(["PENDING", "ACTIVE", "INACTIVE", "BLOCKED"]), accountCreated: z.boolean(),
     language: z.enum(["en", "ur"]), age: z.number().nullable(),
     gender: z.enum(["UNSPECIFIED", "MALE", "FEMALE", "OTHER"]),

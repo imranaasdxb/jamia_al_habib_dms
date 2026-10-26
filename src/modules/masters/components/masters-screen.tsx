@@ -1,6 +1,6 @@
 "use client";
 import { Fragment, memo, useCallback, useState } from "react";
-import { Eye, PencilLine, Plus, RefreshCw, Search } from "lucide-react";
+import { Eye, ImageIcon, PencilLine, Plus, RefreshCw, Search } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { AppShell } from "@/components/layout/app-shell";
 import { usePageDataCache, usePageQuery, usePageState } from "@/components/page-data-provider";
@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { MasterForm } from "@/modules/masters/components/master-form";
+import { EditionReceiptImage } from "@/modules/masters/components/edition-receipt-image";
 import { editionLabel } from "@/modules/masters/editions.schema";
 import { masterCategories, masterLevelLabels, mastersError, mastersRequest } from "@/modules/masters/masters.client";
 import { fixedMasterKinds, mastersResponseSchema } from "@/modules/masters/masters.schema";
@@ -34,14 +35,18 @@ const MasterTableRow = memo(function MasterTableRow({ row, onEdit, onView }: {
     <span className={"masters-secondary block mt-[5px] text-[length:11px] text-[color:var(--muted-foreground)]"} lang={language === "ur" ? "en" : "ur"} dir={language === "ur" ? "ltr" : "rtl"}>
       {language === "ur" ? row.nameEn : row.nameUr}</span></div></td>
     <td><bdi dir="ltr">{row.code}</bdi></td>
-    <td>{row.kind === "TOKEN_VALUE" ? `₹${row.tokenValue}` : row.kind === "EDITION" ? row.edition ? `${row.edition.printingYear} · ${row.edition.quantity} ${t("books")}` : "—"
+    <td>{row.kind === "TOKEN_VALUE" ? `₹${row.tokenValue}` : row.kind === "EDITION" ? <>
+      {row.edition ? `${row.edition.printingYear} · ${row.edition.quantity} ${t("books")}` : "—"}
+      {row.hasReceiptSample && <Button variant="ghost" size="small" className="mt-1 flex min-h-7 px-0 text-primary" onClick={() => onView(row)}><ImageIcon size={14} aria-hidden="true" />{t("editionReceiptView")}</Button>}
+    </>
       : row.kind === "BANK_ACCOUNT" ? `${parent} · •••• ${row.lastFour}`
       : row.kind === "DONATION_HEAD" ? <>{parent}{row.needsDetail && <span className={"masters-secondary block mt-[5px] text-[length:11px] text-[color:var(--muted-foreground)]"}>{t("mastersNeedsDetail")}</span>}</>
       : row.kind === "AREA" && row.level ? <>{t(masterLevelLabels[row.level])}{parent && <span className={"masters-secondary block mt-[5px] text-[length:11px] text-[color:var(--muted-foreground)]"}>{parent}</span>}</>
       : row.needsDetail ? t("mastersNeedsDetail") : "—"}</td>
     <td><Badge tone={row.active ? "success" : "neutral"}>{t(row.active ? "usersActive" : "usersInactive")}</Badge></td>
     <td><div className={"masters-row-actions flex items-center justify-center gap-[4px] [&_.button-icon]:w-[30px] [&_.button-icon]:h-[30px] [&_.button-icon]:min-w-[30px] [&_.button-icon]:p-0"}><Button variant="ghost" size="icon" aria-label={t("usersView")} title={t("usersView")} onClick={() => onView(row)}><Eye size={17} /></Button>
-      <Button variant="ghost" size="icon" aria-label={t("mastersEdit")} title={t("mastersEdit")} onClick={() => onEdit(row)}><PencilLine size={17} /></Button></div></td>
+      <Button variant="ghost" size="icon" aria-label={t("mastersEdit")} title={t("mastersEdit")} onClick={() => onEdit(row)}><PencilLine size={17} /></Button>
+    </div></td>
   </tr>;
 });
 
@@ -52,15 +57,16 @@ function MasterCategory({ kind, accountId }: { kind: MasterKind; accountId: stri
   const [search, setSearch] = usePageState(`${scope}${kind}:search`, "");
   const [status, setStatus] = usePageState<MasterQuery["status"]>(`${scope}${kind}:status${kind === "DONATION_HEAD" ? ":grouped" : ""}`,
     kind === "DONATION_HEAD" ? "ACTIVE" : "ALL");
-  const [level, setLevel] = usePageState<MasterValues["level"]>(`${scope}${kind}:level`, "");
+  const [level, setLevel] = usePageState<MasterValues["level"]>(`${scope}${kind}:level`, kind === "AREA" ? "COLLECTION" : "");
   const [page, setPage] = usePageState(`${scope}${kind}:page`, 1);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<MasterRow | undefined>();
+  const [initialParent, setInitialParent] = useState<Pick<MasterRow, "id" | "nameEn" | "nameUr"> | undefined>();
   const [viewing, setViewing] = useState<MasterRow | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(false);
   const params = new URLSearchParams({ kind, search: search.trim(), status, level: kind === "AREA" ? level : "", page: String(page) }).toString();
-  const key = `${scope}query:${kind}:${kind === "DONATION_HEAD" ? "grouped:" : ""}${params}`;
+  const key = `${scope}query:${kind}:${kind === "EDITION" ? "receipt-samples:" : kind === "DONATION_HEAD" ? "grouped:" : ""}${params}`;
   const fetchRows = useCallback(async (): Promise<MasterPage> => {
     const result = mastersResponseSchema.parse(await mastersRequest(`/api/v1/masters?${params}`));
     return { rows: result.data, ...result.meta };
@@ -69,8 +75,14 @@ function MasterCategory({ kind, accountId }: { kind: MasterKind; accountId: stri
   const data = query.data;
   const loading = query.loading || query.stale;
   const category = masterCategories.find((item) => item.kind === kind);
-  const edit = useCallback((row: MasterRow) => { setViewing(null); setEditing(row); setOpen(true); }, []);
+  const edit = useCallback((row: MasterRow) => { setViewing(null); setInitialParent(undefined); setEditing(row); setOpen(true); }, []);
   const view = useCallback((row: MasterRow) => setViewing(row), []);
+  const addHead = useCallback((row: MasterRow) => {
+    if (row.kind !== "DONATION_HEAD" || !row.parentId) return;
+    setViewing(null); setEditing(undefined);
+    setInitialParent({ id: row.parentId, nameEn: row.parentNameEn, nameUr: row.parentNameUr });
+    setOpen(true);
+  }, []);
   function saved(row: MasterRow) {
     if (data) {
       const term = search.trim().toLowerCase();
@@ -99,7 +111,7 @@ function MasterCategory({ kind, accountId }: { kind: MasterKind; accountId: stri
   }
   return <section className={"masters-category min-w-0"} aria-label={category ? t(category.label) : t("masters")}>
     <div className={"masters-category-header flex justify-between items-center gap-[12px] min-h-[36px] [&_h2]:text-[length:18px]"}><h2>{category && t(category.label)}</h2>
-      {!fixedMasterKinds.includes(kind) && <Button size="small" onClick={() => { setEditing(undefined); setOpen(true); }}><Plus size={16} />{t("mastersAdd")}</Button>}</div>
+      {!fixedMasterKinds.includes(kind) && <Button size="small" onClick={() => { setInitialParent(undefined); setEditing(undefined); setOpen(true); }}><Plus size={16} />{t("mastersAdd")}</Button>}</div>
     <p className={"masters-category-hint text-[color:var(--muted-foreground)] text-[length:11px] leading-[1.8] my-[10px_20px]"}>{t(kind === "DONATION_CATEGORY" ? "mastersDonationCategoriesHint"
       : fixedMasterKinds.includes(kind) ? "mastersFixedHint" : "mastersInactiveHint")}</p>
     {notice && <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8] masters-notice mb-[18px]"} role="status">{t("mastersSaved")}</p>}
@@ -108,7 +120,7 @@ function MasterCategory({ kind, accountId }: { kind: MasterKind; accountId: stri
         onChange={(event) => { setSearch(event.target.value); setPage(1); }} /></label>
       {kind === "AREA" && <select className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)] masters-filter max-w-[155px]"} aria-label={t("mastersAreaLevel")} value={level} onChange={(event) => {
         const value = event.target.value;
-        if (value === "" || value === "STATE" || value === "DISTRICT" || value === "BLOCK" || value === "VILLAGE") { setLevel(value); setPage(1); }
+        if (value === "" || value === "COLLECTION" || value === "STATE" || value === "DISTRICT" || value === "BLOCK" || value === "VILLAGE") { setLevel(value); setPage(1); }
       }}><option value="">{t("mastersAllLevels")}</option>{(Object.keys(masterLevelLabels) as Exclude<MasterValues["level"], "">[]).map((value) =>
         <option key={value} value={value}>{t(masterLevelLabels[value])}</option>)}</select>}
       <select className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)] masters-filter max-w-[155px]"} aria-label={t("status")} value={status} onChange={(event) => {
@@ -126,7 +138,13 @@ function MasterCategory({ kind, accountId }: { kind: MasterKind; accountId: stri
         <th scope="col">{t("status")}</th><th scope="col">{t("usersActions")}</th></tr></thead>
       <tbody>{data?.rows.map((row, index) => <Fragment key={row.id}>
         {kind === "DONATION_HEAD" && (index === 0 || data.rows[index - 1]?.parentId !== row.parentId)
-          && <tr className={"masters-donation-group [&_th]:bg-[var(--accent)] [&_th]:text-[color:var(--primary)] [&_th]:py-[15px] [&_th]:font-[650]"}><th colSpan={5}>{(language === "ur" ? row.parentNameUr : row.parentNameEn) || t("mastersPreviousHeads")}</th></tr>}
+          && <tr className={"masters-donation-group [&_th]:bg-[var(--accent)] [&_th]:text-[color:var(--primary)] [&_th]:py-[15px] [&_th]:font-[650]"}><th colSpan={5}>
+            <div className="flex items-center justify-between gap-3"><span>{(language === "ur" ? row.parentNameUr : row.parentNameEn) || t("mastersPreviousHeads")}</span>
+              {row.parentId && <Button variant="ghost" size="icon" className="size-[30px] min-h-[30px] shrink-0 p-0 text-primary hover:bg-card/70"
+                aria-label={`${t("mastersAddHead")} · ${language === "ur" ? row.parentNameUr : row.parentNameEn}`}
+                title={t("mastersAddHead")} onClick={() => addHead(row)}><Plus size={17} aria-hidden="true" /></Button>}
+            </div>
+          </th></tr>}
         <MasterTableRow row={row} onView={view} onEdit={edit} /></Fragment>)}
         {!data && loading && <tr><td colSpan={5}>{t("working")}</td></tr>}
         {!loading && data?.rows.length === 0 && <tr><td colSpan={5}>{t("mastersEmpty")}</td></tr>}</tbody>
@@ -134,19 +152,24 @@ function MasterCategory({ kind, accountId }: { kind: MasterKind; accountId: stri
     {data && <div className={"masters-pagination flex justify-between items-center gap-[14px] text-[length:12px] mt-[20px]"}><span className={"muted text-[color:var(--muted-foreground)]"}>{t("usersPage")} {data.page} / {Math.max(1, Math.ceil(data.total / data.pageSize))}</span>
       <div className={"header-actions flex items-center gap-[12px]"}><Button variant="outline" size="small" disabled={loading || data.page <= 1} onClick={() => setPage(data.page - 1)}>{t("usersPrevious")}</Button>
         <Button variant="outline" size="small" disabled={loading || data.page * data.pageSize >= data.total} onClick={() => setPage(data.page + 1)}>{t("usersNext")}</Button></div></div>}
-    <Dialog open={open} busy={busy} onOpenChange={(value) => { if (!value) setOpen(false); }} title={t(editing ? "mastersEdit" : "mastersAdd")}
-      description={t(kind === "EDITION" ? "editionFormHelp" : "mastersFormHelp")} className={"masters-editor-dialog w-[min(760px,_calc(100vw_-_40px))]"}>
-      {open && <MasterForm accountId={accountId} kind={kind} record={editing} onBusyChange={setBusy} onSaved={saved} />}
+    <Dialog open={open} busy={busy} onOpenChange={(value) => { if (!value) setOpen(false); }} title={t(editing ? "mastersEdit" : kind === "DONATION_HEAD" ? "mastersAddHead" : "mastersAdd")}
+      description={t(kind === "EDITION" ? "editionFormHelp" : kind === "AREA" ? "mastersCollectionHelp" : "mastersFormHelp")} className={"masters-editor-dialog w-[min(760px,_calc(100vw_-_40px))]"}>
+      {open && <MasterForm accountId={accountId} kind={kind} record={editing} initialParent={initialParent} onBusyChange={setBusy} onSaved={saved} />}
     </Dialog>
     <Dialog open={viewing !== null} onOpenChange={(value) => { if (!value) setViewing(null); }} title={t("mastersDetails")}
-      description={t("mastersInactiveHint")} className={"masters-view-dialog w-[min(600px,_calc(100vw_-_40px))]"}>
+      description={t(viewing?.kind === "EDITION" ? "editionReceiptHint" : "mastersInactiveHint")} className={`masters-view-dialog ${viewing?.kind === "EDITION" && viewing.hasReceiptSample ? "w-[min(900px,_calc(100vw_-_40px))]" : "w-[min(600px,_calc(100vw_-_40px))]"}`}>
       {viewing && <div className={"masters-view grid gap-[20px] pt-[24px] [&_dl]:m-0 [&_dl_>_div]:grid [&_dl_>_div]:grid-cols-[155px_minmax(0,_1fr)] [&_dl_>_div]:gap-[15px] [&_dl_>_div]:py-[13px] [&_dl_>_div]:[border-bottom:1px_solid_var(--border)] [&_dt]:text-[length:12px] [&_dt]:text-[color:var(--muted-foreground)] [&_dd]:m-0 [&_dd]:text-[length:12px] [&_dd]:whitespace-pre-wrap [&_dd]:[overflow-wrap:anywhere]"}><h3>{language === "ur" ? viewing.nameUr : viewing.nameEn}</h3>
+        {viewing.kind === "EDITION" && viewing.hasReceiptSample && <section className="min-w-0 space-y-2" aria-label={t("editionReceiptSample")}>
+          <h4 className="text-xs font-semibold">{t("editionReceiptSample")}</h4>
+          <EditionReceiptImage source={`/api/v1/masters/${viewing.id}/receipt-sample?v=${encodeURIComponent(viewing.updatedAt)}`} />
+        </section>}
         <dl>{((viewing.kind === "EDITION" ? [
           ["editionNumber", viewing.edition ? editionLabel(Number(viewing.edition.editionNumber)) : viewing.nameEn],
           ["editionCode", viewing.edition?.editionCode ?? viewing.code],
           ["editionBookType", viewing.edition ? t(viewing.edition.bookType === "TOKEN" ? "editionToken" : "editionGeneral") : ""],
           ["editionPrintingYear", viewing.edition?.printingYear ?? ""],
-          ["editionTokenDistribution", viewing.edition?.bookType === "TOKEN" ? `₹10: ${viewing.edition.tokenTen} · ₹20: ${viewing.edition.tokenTwenty} · ₹50: ${viewing.edition.tokenFifty}` : ""],
+          ["mastersTokenValues", viewing.edition?.bookType === "TOKEN" ? `₹${viewing.edition.tokenValue}` : ""],
+          ["booksNumber", viewing.edition ? `${viewing.edition.bookFrom ?? 1} – ${(viewing.edition.bookFrom ?? 1) + viewing.edition.quantity - 1}` : ""],
           ["editionPagesFrom", viewing.edition?.pagesFrom ?? ""], ["editionPagesTo", viewing.edition?.pagesTo ?? ""],
           ["editionPagesPerBook", "50"], ["editionQuantity", viewing.edition ? String(viewing.edition.quantity) : ""],
           ["editionPrinter", viewing.edition?.designedPrintedBy ?? ""],
@@ -154,7 +177,7 @@ function MasterCategory({ kind, accountId }: { kind: MasterKind; accountId: stri
         ] : [["mastersCode", viewing.code], ["mastersNameEn", viewing.nameEn], ["mastersNameUr", viewing.nameUr],
           ["status", t(viewing.active ? "usersActive" : "usersInactive")],
           ["mastersAreaLevel", viewing.level ? t(masterLevelLabels[viewing.level]) : ""],
-          [viewing.kind === "DONATION_HEAD" ? "mastersDonationCategory" : "mastersParent", language === "ur" ? viewing.parentNameUr : viewing.parentNameEn],
+          [viewing.kind === "AREA" && viewing.level === "COLLECTION" ? "mastersGeographyOptional" : viewing.kind === "DONATION_HEAD" ? "mastersDonationCategory" : "mastersParent", language === "ur" ? viewing.parentNameUr : viewing.parentNameEn],
           ["mastersTokenRupees", viewing.tokenValue], ["mastersAccountName", viewing.accountName],
           ["mastersLastFour", viewing.lastFour], ["mastersUpiId", viewing.upiId],
           ["mastersNeedsDetail", viewing.needsDetail ? t("mastersRequired") : ""], ["usersRemarks", viewing.notes]]) as [MessageKey, string][])

@@ -3,7 +3,7 @@ export interface UserRow {
   fullName: string;
   email: string | null;
   phone: string | null;
-  role: "ADMIN" | "STAFF" | "COLLECTOR";
+  role: "SUPER_ADMIN" | "ADMIN" | "COLLECTOR";
   status: "PENDING" | "ACTIVE" | "INACTIVE" | "BLOCKED";
   accountCreated: boolean;
   language: "en" | "ur";

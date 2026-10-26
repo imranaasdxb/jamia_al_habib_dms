@@ -5,7 +5,7 @@ import { AuthFailure } from "@/modules/auth/auth.types";
 
 export async function requirePermission(permission: string) {
   const { account, identity } = await requireAccountContext();
-  if (account.role === "ADMIN") return account;
+  if (account.role === "SUPER_ADMIN") return account;
   const allowed = await hasAccountPermission(identity, account, permission);
   if (!allowed) throw new AuthFailure("ACCESS_DENIED");
   return account;

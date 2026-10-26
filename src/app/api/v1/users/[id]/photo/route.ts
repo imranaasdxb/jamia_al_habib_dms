@@ -22,8 +22,8 @@ async function getPhoto(_request: NextRequest, context: Context) {
     const id = await personId(context);
     const account = (await getUsersAccount(false))?.account;
     if (!account) throw new AuthFailure("SESSION_EXPIRED", 401);
-    if (account.role !== "ADMIN" && account.id !== id) throw new AuthFailure("ACCESS_DENIED");
-    const person = account.role === "ADMIN" ? await getManagedUser(id)
+    if (account.role !== "SUPER_ADMIN" && account.id !== id) throw new AuthFailure("ACCESS_DENIED");
+    const person = account.role === "SUPER_ADMIN" ? await getManagedUser(id)
       : await withRequestDatabase({ email: account.email }, async (transaction) => {
         const [own] = await transaction.select({ profilePhotoKey: people.profilePhotoKey })
           .from(people).where(and(eq(people.id, account.id), isNull(people.deletedAt))).limit(1);

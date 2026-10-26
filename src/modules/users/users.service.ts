@@ -181,10 +181,10 @@ export async function verifyUserOtp(personId: string, flowId: string, otp: strin
     }
     if (fresh.actorId !== actorId) await transaction.update(userVerificationFlows).set({ actorId, updatedBy: actorId })
       .where(eq(userVerificationFlows.id, flow.id));
-    if (flow.purpose === "ONBOARD" ? details.role === "ADMIN"
+    if (flow.purpose === "ONBOARD" ? details.role === "SUPER_ADMIN"
       : details.role !== current.role || details.fullName !== current.fullName) {
       const metadata = await getAuth().admin.updateUser({ userId: providerId,
-        data: { name: details.fullName, role: details.role === "ADMIN" ? "admin" : "user" } });
+        data: { name: details.fullName, role: details.role === "SUPER_ADMIN" ? "admin" : "user" } });
       requireProviderSuccess(metadata.error);
     }
     await transaction.update(people).set({ ...profileColumns(details),
@@ -247,7 +247,7 @@ export async function blockUser(id: string, blocked: boolean) {
   const providerError = await withAdminDatabase(async (transaction, actorId) => {
     const { person: current } = await requireEditableTarget(transaction, actorId, id);
     if (current.id === actorId) throw new AuthFailure("CANNOT_CHANGE_SELF", 409);
-    await guardAccessChange(transaction, actorId, current, current.role === "ADMIN" ? "ADMIN" : "STAFF", blocked ? "BLOCKED" : "ACTIVE");
+    await guardAccessChange(transaction, actorId, current, current.role === "SUPER_ADMIN" ? "SUPER_ADMIN" : "ADMIN", blocked ? "BLOCKED" : "ACTIVE");
     const [flow] = await transaction.select({ id: userVerificationFlows.id }).from(userVerificationFlows)
       .where(and(eq(userVerificationFlows.personId, id), ne(userVerificationFlows.state, "COMPLETE"),
         isNull(userVerificationFlows.deletedAt))).limit(1);

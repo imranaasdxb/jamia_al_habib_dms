@@ -60,9 +60,10 @@ export function ReceiptBookScreen({ account, returnId }: { account: Account; ret
   const [jump, setJump] = useState("");
   const [busy, setBusy] = useState(false); const [dirty, setDirty] = useState(false);
   const [leaving, setLeaving] = useState<number | null>(null); const [confirm, setConfirm] = useState(false); const [finalizing, setFinalizing] = useState(false);
+  const [reopenConfirm, setReopenConfirm] = useState(false); const [reopenReason, setReopenReason] = useState("");
   const [mode, setMode] = useState<"RAISE_ISSUE" | "REQUEST_EDIT" | null>(null); const [reason, setReason] = useState(""); const [sending, setSending] = useState(false);
   const [error, setError] = useState<MessageKey | null>(null); const [notice, setNotice] = useState<MessageKey | null>(null);
-  const key = `${scope}query:all`;
+  const key = `${scope}query:all:submission-reopen-v4`;
   const load = useCallback(async () => receiptBookResponseSchema.parse(await receiptRequest(`/api/v1/receipt-entry/${returnId}?resume=1`)).data, [returnId]);
   const query = usePageQuery(key, load, { enabled: !busy && !finalizing && !sending }); const data = query.data;
   const current = data?.rows.find((row) => row.number === (selected || data.lastCheckedNumber)) ?? data?.rows[0]; const record = current?.record;
@@ -73,19 +74,20 @@ export function ReceiptBookScreen({ account, returnId }: { account: Account; ret
     setSelected(number);
   }, [cache, data, selected, scope]);
   const jumpNumber = /^\d+$/.test(jump) ? Number(jump) : 0;
-  const canJump = Boolean(data && Number.isSafeInteger(jumpNumber) && jumpNumber >= data.header.returned.receiptFrom && jumpNumber <= (data.header.returned.lastUsed ?? 0));
+  const rangeEnd = data?.header.submissionPending && !data.header.finalized ? data.header.returned.receiptTo : data?.header.returned.lastUsed ?? 0;
+  const canJump = Boolean(data && Number.isSafeInteger(jumpNumber) && jumpNumber >= data.header.returned.receiptFrom && jumpNumber <= rangeEnd);
   const approved = record && data?.requests.some((row) => row.receiptId === record.id && row.requestedBy === account.id && row.status === "APPROVED" && row.baseVersion === record.version);
   const activeRequest = record && data?.requests.find((row) => row.receiptId === record.id && row.requestedBy === account.id && row.baseVersion === record.version && (row.status === "PENDING" || row.status === "APPROVED"));
   function changed(book: ReceiptBook, finalized = false) {
-    const savedRows = new Map(book.rows.map((row) => [row.number, row]));
-    cache.updateQueries<ReceiptBook>(key, (previous) => ({ ...previous, header: book.header, totals: book.totals,
-      checkedCount: book.checkedCount, lastCheckedNumber: book.lastCheckedNumber, requests: book.requests, issues: book.issues,
-      rows: previous.rows.map((row) => savedRows.get(row.number) ?? row) }));
+    cache.setQueryData(key, book);
+    const end = book.header.finalized ? book.header.returned.lastUsed ?? book.header.returned.receiptFrom : book.header.returned.receiptTo;
+    if (selected > end) setSelected(end);
     const checkpoint = book.lastCheckedNumber ?? book.header.returned.receiptFrom;
     cache.write(`${scope}resume-number`, checkpoint);
     cache.invalidate(`${account.id}:receipts:queue:query:`); cache.invalidate(`${account.id}:returns:returned:`);
+    cache.invalidate(`${account.id}:returns:open:`);
     if (finalized) {
-      cache.invalidate(`${account.id}:returns:open:`); cache.invalidate(`${account.id}:assignments:query:`);
+      cache.invalidate(`${account.id}:assignments:query:`);
       cache.invalidate(`${account.id}:assignments:detail:${book.header.returned.assignmentId}`);
       cache.invalidate(`${account.id}:books:query:`); cache.invalidate(`${account.id}:leftovers:`);
       cache.invalidate(`${account.id}:flags:`); cache.invalidate(`${account.id}:receipts:donors:`);
@@ -93,21 +95,22 @@ export function ReceiptBookScreen({ account, returnId }: { account: Account; ret
   }
   function navigate(number: number, discard = false) {
     if (!data || busy || finalizing || sending || !Number.isSafeInteger(number)
-      || number < data.header.returned.receiptFrom || number > (data.header.returned.lastUsed ?? 0) || number === current?.number) return;
+      || number < data.header.returned.receiptFrom || number > rangeEnd || number === current?.number) return;
     if (dirty && !discard) { setLeaving(number); return; }
     setDirty(false); setSelected(number); setLeaving(null); setJump("");
   }
-  async function finalize() {
-    if (!data || finalizing || dirty) return; setFinalizing(true); setError(null);
+  async function finalize(action: "FINALIZE" | "REOPEN" = "FINALIZE") {
+    if (!data || finalizing || busy || sending || dirty || (action === "REOPEN" && (account.role !== "SUPER_ADMIN" || reopenReason.trim().length < 3))) return;
+    setFinalizing(true); setError(null);
     try {
-      const result = receiptBookResponseSchema.parse(await receiptRequest(`/api/v1/receipt-entry/${returnId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "FINALIZE", version: data.header.version, page: data.page }) }));
-      changed(result.data, true); setNotice(result.data.header.returned.receiptEntryStatus === "FLAGGED" ? "receiptFinalizedFlagged" : "receiptFinalizedMatched");
+      const result = receiptBookResponseSchema.parse(await receiptRequest(`/api/v1/receipt-entry/${returnId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, version: data.header.version, page: data.page, ...(action === "REOPEN" ? { reason: reopenReason.trim() } : {}) }) }));
+      changed(result.data, true); setDirty(false); setNotice(action === "REOPEN" ? "submissionReopened" : result.data.header.returned.receiptEntryStatus === "FLAGGED" ? "receiptFinalizedFlagged" : "receiptFinalizedMatched");
     } catch (failure) {
       setError(receiptError(failure));
       if (failure instanceof ReceiptRequestError && failure.number !== undefined) {
         setDirty(false); setSelected(failure.number);
       }
-    } finally { setFinalizing(false); setConfirm(false); }
+    } finally { setFinalizing(false); setConfirm(false); setReopenConfirm(false); }
   }
   async function requestWorkflow() {
     if (!mode || !current || reason.trim().length < 3 || sending) return; setSending(true); setError(null);
@@ -125,21 +128,22 @@ export function ReceiptBookScreen({ account, returnId }: { account: Account; ret
   const actions = data && <>
     {current && <>
       <Button variant="outline" size="small" disabled={busy || sending} onClick={() => { setMode("RAISE_ISSUE"); setFlagReason(""); setReason(""); }}><Flag size={14} />{t("returnsRaiseFlag")}</Button>
-      {data.header.finalized && <Button variant="outline" size="small" disabled={busy || Boolean(activeRequest)} onClick={() => { setMode("REQUEST_EDIT"); setReason(""); }}>{t(approved ? "submissionEditApproved" : activeRequest ? "submissionEditPending" : "submissionRequestEdit")}</Button>}
+      {data.header.finalized && account.role !== "SUPER_ADMIN" && <Button variant="outline" size="small" disabled={busy || Boolean(activeRequest)} onClick={() => { setMode("REQUEST_EDIT"); setReason(""); }}>{t(approved ? "submissionEditApproved" : activeRequest ? "submissionEditPending" : "submissionRequestEdit")}</Button>}
       <Button variant="outline" size="small" disabled={busy || finalizing || sending || current.number <= data.header.returned.receiptFrom} onClick={() => navigate(current.number - 1)}><ChevronLeft size={14} />{t("submissionPreviousReceipt")}</Button>
-      <Button size="small" disabled={busy || finalizing || sending || current.number >= (data.header.returned.lastUsed ?? 0)} onClick={() => navigate(current.number + 1)}>{t("submissionNextReceipt")}<ChevronRight size={14} /></Button>
+      <Button size="small" disabled={busy || finalizing || sending || current.number >= rangeEnd} onClick={() => navigate(current.number + 1)}>{t("submissionNextReceipt")}<ChevronRight size={14} /></Button>
       <div className="flex items-center gap-1.5"><Input inputMode="numeric" maxLength={10} value={jump} aria-label={t("receiptNumber")}
-        placeholder={`${data.header.returned.receiptFrom}–${data.header.returned.lastUsed ?? data.header.returned.receiptFrom}`}
+        placeholder={`${data.header.returned.receiptFrom}–${rangeEnd}`}
         className="min-h-8 w-24 px-2 py-1 text-xs" disabled={busy || finalizing || sending}
         onChange={(event) => setJump(event.target.value.replace(/\D/g, ""))}
         onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); if (canJump) navigate(jumpNumber); } }} />
         <Button variant="outline" size="small" disabled={!canJump || busy || finalizing || sending} onClick={() => navigate(jumpNumber)}>{t("submissionGoReceipt")}</Button>
       </div>
     </>}
-    {!data.header.finalized && <Button variant="outline" size="small" loading={finalizing} disabled={busy || dirty || data.checkedCount !== data.total} onClick={() => setConfirm(true)}>{t("submissionFinalize")}</Button>}
+    {data.header.finalized && account.role === "SUPER_ADMIN" && <Button size="small" loading={finalizing} disabled={busy || dirty || sending} onClick={() => { setReopenReason(""); setReopenConfirm(true); }}>{t("submissionReopen")}</Button>}
+    {!data.header.finalized && (!data.header.collectionExpandable || account.role === "SUPER_ADMIN") && <Button variant="outline" size="small" loading={finalizing} disabled={busy || dirty || sending} onClick={() => setConfirm(true)}>{t("submissionFinalize")}</Button>}
   </>;
   const messages = data && <>
-    {data.header.finalized && <p className="px-2 text-xs text-muted-foreground">{t(approved ? "submissionEditApprovedHelp" : "receiptLocked")}</p>}
+    {data.header.finalized && <p className="px-2 text-xs text-muted-foreground">{t(account.role === "SUPER_ADMIN" ? "submissionReopenHelp" : approved ? "submissionEditApprovedHelp" : "receiptLocked")}</p>}
     {data.issues.filter((row) => row.receiptNumber === current?.number).map((row) => <div key={row.id} className="rounded-xl border border-[var(--warning)]/30 bg-[var(--warning-soft)] p-3 text-xs"><strong>{t("flags")} · {row.status}</strong><p className="mt-1 whitespace-pre-wrap">{row.reason}</p>{row.resolution && <p className="mt-2">{row.resolution}</p>}</div>)}
     {record && data.requests.filter((row) => row.receiptId === record.id && row.requestedBy === account.id).map((row) => <div key={row.id} className="rounded-xl border border-border p-3 text-xs"><strong>{t("submissionRequestEdit")} · {row.status}</strong><p className="mt-1">{row.reason}</p>{row.reviewNote && <p className="mt-2 text-muted-foreground">{row.reviewNote}</p>}</div>)}
   </>;
@@ -164,9 +168,9 @@ export function ReceiptBookScreen({ account, returnId }: { account: Account; ret
           </Card>
         </div>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card">
-          <div className="shrink-0 space-y-2 border-b border-border px-3 py-2"><div className="flex items-center justify-between gap-3 text-[11px]"><span className="font-semibold">{t("receiptEntry")}{current && ` · ${current.number}`}</span><div className="flex items-center gap-3"><span>{t("receiptEntered")}: <b>{data.totals.saved}/{data.total}</b> · {t("submissionChecked")}: <b>{data.checkedCount}/{data.total}</b></span><Badge tone={data.header.returned.receiptEntryStatus === "FLAGGED" ? "danger" : data.header.finalized ? "success" : "warning"}>{t(statusLabel(data.header))}</Badge></div></div>
-            <div className="h-1 overflow-hidden rounded-full bg-accent"><div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${data.total === 0 ? 100 : data.checkedCount / data.total * 100}%` }} /></div></div>
-          <div className="min-h-0 flex-1">{current ? <ReceiptForm key={current.number} accountId={account.id} number={current.number} record={current.record} header={data.header} totals={data.totals} donationCategories={donations.data?.categories ?? []} donationsLoading={!donations.data && (donations.loading || donations.stale)} donationError={donations.error} onRetryDonations={() => cache.invalidate(`${account.id}:masters:receipt-donations`)} page={Math.floor((current.number - data.header.returned.receiptFrom) / 20) + 1} allowEdit={Boolean(approved)} onBusyChange={setBusy} onDirtyChange={setDirty} actions={actions} messages={messages}
+          <div className="shrink-0 space-y-2 border-b border-border px-3 py-2"><div className="flex items-center justify-between gap-3 text-[11px]"><span className="font-semibold">{t("receiptEntry")}{current && ` · ${current.number}`}</span><div className="flex items-center gap-3"><span>{t("receiptEntered")}: <b>{data.totals.saved}/{data.header.returned.receiptsUsed}</b> · {t("submissionChecked")}: <b>{data.checkedCount}/{data.header.returned.receiptsUsed}</b></span><Badge tone={data.header.returned.receiptEntryStatus === "FLAGGED" ? "danger" : data.header.finalized ? "success" : "warning"}>{t(statusLabel(data.header))}</Badge></div></div>
+            <div className="h-1 overflow-hidden rounded-full bg-accent"><div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${data.header.returned.receiptsUsed === 0 ? 0 : data.checkedCount / data.header.returned.receiptsUsed * 100}%` }} /></div></div>
+          <div className="min-h-0 flex-1">{current ? <ReceiptForm key={`${current.number}:${data.header.finalized ? "closed" : "open"}`} accountId={account.id} number={current.number} record={current.record} header={data.header} totals={data.totals} donationCategories={donations.data?.categories ?? []} donationsLoading={!donations.data && (donations.loading || donations.stale)} donationError={donations.error} onRetryDonations={() => cache.invalidate(`${account.id}:masters:receipt-donations`)} page={Math.floor((current.number - data.header.returned.receiptFrom) / 20) + 1} allowEdit={Boolean(approved || (account.role === "SUPER_ADMIN" && data.header.collectionExpandable))} onBusyChange={setBusy} onDirtyChange={setDirty} actions={actions} messages={messages}
             onSaved={(book) => { changed(book, data.header.finalized); setDirty(false);
               const saved = book.rows.find((row) => row.number === current.number)?.record;
               setNotice(saved?.checked && saved.values.status === "CANCELLED" ? "receiptCancelledSaved" : data.header.finalized ? "submissionCorrectionSaved" : "receiptDraftSaved"); }} />
@@ -175,6 +179,11 @@ export function ReceiptBookScreen({ account, returnId }: { account: Account; ret
       </>}
     </div>
     <Dialog open={confirm} busy={finalizing} onOpenChange={setConfirm} title={t("submissionFinalize")} description={t("receiptFinalizeHelp")}><div className="flex justify-end pt-5"><Button loading={finalizing} onClick={() => { void finalize(); }}>{t("submissionFinalize")}</Button></div></Dialog>
+    <Dialog open={reopenConfirm} busy={finalizing} onOpenChange={setReopenConfirm} title={t("submissionReopen")} description={t("submissionReopenHelp")}>
+      <label htmlFor="reopen-reason" className="mb-2 mt-4 block text-xs">{t("submissionReason")}</label>
+      <textarea id="reopen-reason" rows={3} minLength={3} maxLength={1000} value={reopenReason} onChange={(event) => setReopenReason(event.target.value)} className="w-full rounded-xl border border-border bg-card p-3 text-sm" />
+      <div className="mt-4 flex justify-end"><Button loading={finalizing} disabled={reopenReason.trim().length < 3} onClick={() => { void finalize("REOPEN"); }}>{t("submissionReopen")}</Button></div>
+    </Dialog>
     <Dialog open={mode !== null} busy={sending} onOpenChange={(open) => { if (!open) setMode(null); }} title={t(mode === "REQUEST_EDIT" ? "submissionRequestEdit" : "returnsRaiseFlag")} description={t("submissionReasonHelp")}>
       {mode === "RAISE_ISSUE" && <div className="mt-4"><ReceiptOptionSelect label="flags" value={flagReason} onChange={setFlagReason} options={RECEIPT_FLAG_OPTIONS.map(({ code, ...labels }) => ({ id: code, ...labels }))} /></div>}
       <label className="mb-2 mt-4 block text-xs" htmlFor="workflow-reason">{t("submissionReason")}</label><textarea id="workflow-reason" rows={4} minLength={3} maxLength={1000} value={reason} onChange={(event) => setReason(event.target.value)} className="w-full rounded-xl border border-border bg-card p-3 text-sm" />

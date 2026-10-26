@@ -16,19 +16,20 @@ export function MasterParentSelect({ accountId, bank, donation = false, level, v
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const parentLevel = level === "DISTRICT" ? "STATE" : level === "BLOCK" ? "DISTRICT" : "BLOCK";
+  const collection = level === "COLLECTION" && !bank && !donation;
   const kind = donation ? "DONATION_CATEGORY" : bank ? "BANK" : "AREA";
-  const params = new URLSearchParams({ kind, level: bank || donation ? "" : parentLevel, search: search.trim(), page: String(page) }).toString();
+  const params = new URLSearchParams({ kind, level: bank || donation || collection ? "" : parentLevel, search: search.trim(), page: String(page), ...(collection ? { geographyOnly: "YES" } : {}) }).toString();
   const fetchOptions = useCallback(async () => masterOptionsResponseSchema.parse(await mastersRequest(`/api/v1/masters/options?${params}`)), [params]);
   const query = usePageQuery(`${accountId}:masters:options:${kind}:${params}`, fetchOptions, { delay: search ? 300 : 0 });
   const loading = query.loading || query.stale;
   const options = query.data?.data ?? [];
   return <div className={"masters-parent-field grid gap-[8px] [&_.field-label]:mb-0"}>
-    <label htmlFor="master-parent" className={"field-label block text-[length:12px] font-semibold mb-[8px]"}>{t(donation ? "mastersDonationCategory" : bank ? "mastersBank" : "mastersParent")} *</label>
+    <label htmlFor="master-parent" className={"field-label block text-[length:12px] font-semibold mb-[8px]"}>{t(collection ? "mastersGeographyOptional" : donation ? "mastersDonationCategory" : bank ? "mastersBank" : "mastersParent")}{!collection && " *"}</label>
     <Input type="search" maxLength={100} placeholder={t("mastersParentSearch")} aria-label={t("mastersParentSearch")}
       value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} />
-    <select id="master-parent" className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} required aria-invalid={error} aria-busy={loading}
+    <select id="master-parent" className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} required={!collection} aria-invalid={error} aria-busy={loading}
       aria-describedby={error ? "master-parent-error" : undefined} value={value} onChange={(event) => onChange(event.target.value)}>
-      <option value="">{t("mastersChooseParent")}</option>
+      <option value="">{t(collection ? "mastersGeographyUnlinked" : "mastersChooseParent")}</option>
       {value && !options.some((row) => row.id === value) && <option value={value}>{currentName || value}</option>}
       {options.map((row) => <option key={row.id} value={row.id}>{language === "ur" ? row.nameUr : row.nameEn}</option>)}
     </select>

@@ -3,7 +3,7 @@ import { bigint, boolean, date, index, integer, jsonb, pgTable, text, timestamp,
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
-export const PERSON_ROLES = ["ADMIN", "STAFF", "COLLECTOR"] as const;
+export const PERSON_ROLES = ["SUPER_ADMIN", "ADMIN", "COLLECTOR"] as const;
 export const PERSON_STATUSES = ["PENDING", "ACTIVE", "INACTIVE", "BLOCKED"] as const;
 
 const auditColumns = () => ({
@@ -20,7 +20,7 @@ export const people = pgTable("people", {
   fullName: text("full_name").notNull(),
   email: text("email").unique(),
   phone: text("phone").unique(),
-  role: text("role", { enum: PERSON_ROLES }).notNull().default("STAFF"),
+  role: text("role", { enum: PERSON_ROLES }).notNull().default("ADMIN"),
   status: text("status", { enum: PERSON_STATUSES }).notNull().default("PENDING"),
   language: text("language", { enum: ["en", "ur"] }).notNull().default("en"),
   profilePhotoKey: text("profile_photo_key"),
@@ -96,11 +96,12 @@ export const masterRecords = pgTable("master_records", {
   notes: text("notes").notNull().default(""),
   editionCode: text("edition_code"), editionNumber: integer("edition_number"),
   editionBookType: text("edition_book_type", { enum: ["REGULAR", "TOKEN"] }),
-  editionTokenBooks: jsonb("edition_token_books").$type<{ "10": number; "20": number; "50": number }>(), printingYear: integer("printing_year"),
+  editionTokenBooks: jsonb("edition_token_books").$type<{ "10": number; "20": number; "50": number }>(),
+  editionTokenValuePaise: integer("edition_token_value_paise"), editionBookFrom: integer("edition_book_from"), printingYear: integer("printing_year"),
   pagesFrom: integer("pages_from"), pagesTo: integer("pages_to"), pagesPerBook: integer("pages_per_book"),
   bookQuantity: integer("book_quantity"), designedPrintedBy: text("designed_printed_by"),
   needsDetail: boolean("needs_detail").notNull().default(false),
-  level: text("level", { enum: ["STATE", "DISTRICT", "BLOCK", "VILLAGE"] }),
+  level: text("level", { enum: ["COLLECTION", "STATE", "DISTRICT", "BLOCK", "VILLAGE"] }),
   parentId: uuid("parent_id").references((): AnyPgColumn => masterRecords.id, { onDelete: "restrict" }),
   tokenValueRupees: integer("token_value_rupees"),
   accountName: text("account_name").notNull().default(""), lastFour: text("last_four").notNull().default(""),
@@ -111,7 +112,8 @@ export const masterRecords = pgTable("master_records", {
 
 export const books = pgTable("books", {
   id: uuid("id").primaryKey().defaultRandom(), bookNumber: text("book_number").notNull().unique(),
-  editionBookNumber: integer("edition_book_number"),
+  editionBookNumber: integer("edition_book_number"), editionNumber: integer("edition_number"),
+  receiptScope: text("receipt_scope").notNull().default("REGULAR"),
   stockDate: date("stock_date").notNull(), editionId: uuid("edition_id").notNull().references(() => masterRecords.id, { onDelete: "restrict" }),
   editionNameEn: text("edition_name_en").notNull(), editionNameUr: text("edition_name_ur").notNull(),
   bookType: text("book_type", { enum: ["REGULAR", "TOKEN"] }).notNull(), tokenValuePaise: integer("token_value_paise"),
@@ -174,6 +176,7 @@ export const bookReturns = pgTable("book_returns", {
   sourceCode: text("source_code").notNull().default(""),
   submissionPending: boolean("submission_pending").notNull().default(false),
   receiptEntryVersion: integer("receipt_entry_version").notNull().default(0), finalizedAt: timestamp("finalized_at", { withTimezone: true }),
+  reopenedAt: timestamp("reopened_at", { withTimezone: true }),
   bookId: uuid("book_id").notNull().references(() => books.id, { onDelete: "restrict" }),
   assignmentId: uuid("assignment_id").notNull().references(() => bookAssignments.id, { onDelete: "restrict" }),
   bookNumber: text("book_number").notNull(), collectorName: text("collector_name").notNull(), returnDate: date("return_date").notNull(),
@@ -211,14 +214,14 @@ export const bookFlags = pgTable("book_flags", {
 
 export const bookReceipts = pgTable("book_receipts", {
   id: uuid("id").primaryKey().defaultRandom(), returnId: uuid("return_id").notNull().references(() => bookReturns.id, { onDelete: "restrict" }),
-  bookId: uuid("book_id").notNull().references(() => books.id, { onDelete: "restrict" }), number: integer("receipt_number").notNull().unique(),
+  bookId: uuid("book_id").notNull().references(() => books.id, { onDelete: "restrict" }), number: integer("receipt_number").notNull(),
   checked: boolean("checked").notNull().default(false),
   data: jsonb("data").$type<import("@/modules/receipts/receipts.schema").ReceiptValues>().notNull(),
   labels: jsonb("labels").$type<Record<string, { nameEn: string; nameUr: string }>>().notNull().default({}),
   status: text("status", { enum: ["VALID", "CANCELLED", "TORN", "LOST", "BLANK"] }).notNull(),
   amountPaise: bigint("amount_paise", { mode: "number" }), phone: text("phone").notNull().default(""),
   reference: text("reference"), photoKey: text("photo_key"), version: integer("version").notNull().default(1), entryByName: text("entry_by_name").notNull(), ...auditColumns(),
-}, (table) => [index("book_receipts_return_idx").on(table.returnId, table.number), index("book_receipts_phone_idx").on(table.phone)]);
+}, (table) => [uniqueIndex("book_receipts_book_number_idx").on(table.bookId, table.number), index("book_receipts_return_idx").on(table.returnId, table.number), index("book_receipts_phone_idx").on(table.phone)]);
 
 export const paymentReferences = pgTable("payment_references", {
   reference: text("reference").primaryKey(), sourceType: text("source_type", { enum: ["RECEIPT", "DONATION"] }).notNull(),
@@ -252,10 +255,13 @@ export const leftoverBooks = pgTable("leftover_books", {
   status: text("status", { enum: ["AVAILABLE", "ASSIGNED", "HELD"] }).notNull().default("AVAILABLE"), ...auditColumns(),
 });
 
-export const collectors = pgTable("collectors", {
+// Keep the internal alias for existing modules; the physical table is fundraisers.
+export const collectors = pgTable("fundraisers", {
   id: uuid("id").primaryKey().defaultRandom(),
   personId: uuid("person_id").notNull().unique().references(() => people.id, { onDelete: "restrict" }),
-  code: text("code").notNull().unique().default(sql`'COL-' || lpad(nextval('public.collector_number_seq')::text, 6, '0')`),
+  code: text("code").notNull().unique().default(sql`public.next_fundraiser_profile_code()`),
+  legacyImportKey: text("legacy_import_key").unique(),
+  collectionAreaId: uuid("collection_area_id").references(() => masterRecords.id, { onDelete: "restrict" }),
   fatherName: text("father_name").notNull().default(""),
   whatsapp: text("whatsapp").notNull().default(""),
   idProofName: text("id_proof_name").notNull().default(""),

@@ -45,7 +45,7 @@ export function CreateUserForm({ onSaved, onChanged, onBusyChange, actorId, user
     resolver: zodResolver(userEditorSchema(onboarding)), mode: "onTouched",
     defaultValues: { fullName: user?.fullName ?? "", email: user?.email ?? "",
       phone: user?.phone?.startsWith("+91") ? user.phone.slice(3) : user?.phone ?? "",
-      role: user?.role === "ADMIN" ? "ADMIN" : "STAFF", language: user?.language ?? "en",
+      role: user?.role === "SUPER_ADMIN" ? "SUPER_ADMIN" : "ADMIN", language: user?.language ?? "en",
       age: user?.age === null || user?.age === undefined ? "" : String(user.age),
       gender: user?.gender ?? "UNSPECIFIED", address: user?.address ?? "", remarks: user?.remarks ?? "",
       password: "", confirmPassword: "",
@@ -177,7 +177,7 @@ export function CreateUserForm({ onSaved, onChanged, onBusyChange, actorId, user
       <div><label className={"field-label block text-[length:12px] font-semibold mb-[8px]"} htmlFor="user-role">{t("usersRole")}</label>
         {isSelf ? <><input id="user-role" className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} readOnly value={t("superAdmin")} />
           <input type="hidden" {...register("role")} /></> : <select id="user-role" className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} {...register("role")}>
-          <option value="STAFF">{t("staff")}</option><option value="ADMIN">{t("superAdmin")}</option>
+          <option value="ADMIN">{t("staff")}</option><option value="SUPER_ADMIN">{t("superAdmin")}</option>
         </select>}</div>
       <AuthField id="user-age" label={t("usersAge")} type="number" min={18} max={80}
         error={fieldError(errors.age?.message)} {...register("age")} />

@@ -1,6 +1,6 @@
 import { requireSameOrigin } from "@/modules/auth/auth.service";
 import { AuthFailure } from "@/modules/auth/auth.types";
-import { collectorInput } from "@/modules/people/people.http";
+import { collectorInput, collectorListFailure } from "@/modules/people/people.http";
 import { listCollectors, saveCollector } from "@/modules/people/people.repository";
 import { collectorQuerySchema } from "@/modules/people/people.schema";
 import { userFailure, userResponse } from "@/modules/users/users.http";
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     if (!query.success) throw new AuthFailure("INVALID_INPUT", 400);
     const { collectors, ...meta } = await listCollectors(query.data);
     return userResponse(collectors, 200, meta);
-  } catch (error) { return userFailure(error); }
+  } catch (error) { return collectorListFailure(error); }
 }
 export async function POST(request: NextRequest) {
   try {

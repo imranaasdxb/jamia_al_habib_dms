@@ -4,6 +4,7 @@ import { bookAssignments, bookFlags, bookReceipts, bookReturns, books, people, r
 import { withBooksDatabase } from "@/modules/books/books.repository";
 import { AuthFailure } from "@/modules/auth/auth.types";
 import { returnRowSchema } from "@/modules/books/returns.schema";
+import { indiaToday } from "@/modules/books/assignments.schema";
 import { donorSuggestionSchema, receiptBookSchema, receiptHeaderSchema, receiptRecordSchema, receiptValuesSchema } from "@/modules/receipts/receipts.schema";
 import { readProfilePhoto, removeProfilePhoto, uploadReceiptPhoto } from "@/lib/storage/profile-photos";
 import { RECEIPT_REASON_OPTIONS } from "@/modules/receipts/receipt-options";
@@ -15,16 +16,22 @@ export class ReceiptFailure extends AuthFailure {
   constructor(code: string, status = 409, public readonly receiptNumber?: number,
     public readonly setupDetails?: { sqlState: string; missingObject?: string }) { super(code, status); }
 }
-const serialize = (row: typeof bookReceipts.$inferSelect) => receiptRecordSchema.parse({ id: row.id, number: row.number, version: row.version, values: row.data,
+const serialize = (row: typeof bookReceipts.$inferSelect, historicalSummary = false, location?: { district?: string; state?: string }) => receiptRecordSchema.parse({
+  historicalSummary, id: row.id, number: row.number, version: row.version,
+  values: historicalSummary && location ? { ...row.data, district: row.data.district || location.district || "",
+    state: row.data.state || location.state || "" } : row.data,
   checked: row.checked,
   labels: row.labels, hasPhoto: row.photoKey !== null, updatedAt: row.updatedAt.toISOString(), entryByName: row.entryByName });
 const headerColumns = { returned: bookReturns, assignmentDate: bookAssignments.assignmentDate, editionEn: books.editionNameEn, editionUr: books.editionNameUr,
   collectorId: bookAssignments.collectorId, collectorCode: bookAssignments.collectorCode, phone: bookAssignments.phone, address: bookAssignments.address,
   assignmentNumber: bookAssignments.number, expectedReturnDate: bookAssignments.expectedReturnDate, hasPhoto: sql<boolean>`${people.profilePhotoKey} is not null`,
-  bookType: books.bookType, tokenValuePaise: books.tokenValuePaise };
+  bookType: books.bookType, tokenValuePaise: books.tokenValuePaise,
+  collectionExpandable: sql<boolean>`${bookReturns.reopenedAt} is not null and ${bookReturns.finalizedAt} is null`,
+  historicalOpen: sql<boolean>`${bookReturns.submissionPending} and ${bookReturns.finalizedAt} is null and public.receipt_has_historical_import(${bookReturns.id})` };
 type HeaderRecord = { returned: typeof bookReturns.$inferSelect; assignmentDate: string; editionEn: string; editionUr: string; bookType: "REGULAR" | "TOKEN"; tokenValuePaise: number | null;
-  collectorId: string; collectorCode: string; phone: string; address: string; assignmentNumber: string; expectedReturnDate: string; hasPhoto: boolean };
+  collectorId: string; collectorCode: string; phone: string; address: string; assignmentNumber: string; expectedReturnDate: string; hasPhoto: boolean; historicalOpen: boolean; collectionExpandable: boolean };
 const header = (row: HeaderRecord) => receiptHeaderSchema.parse({ ...row, returned: returnRowSchema.parse({ ...row.returned, createdAt: row.returned.createdAt.toISOString() }),
+  entryEndDate: row.returned.finalizedAt === null && row.returned.submissionPending ? indiaToday() : row.returned.returnDate,
   submissionPending: row.returned.submissionPending, version: row.returned.receiptEntryVersion, finalized: row.returned.finalizedAt !== null });
 function headerQuery(tx: RequestDatabase) { return tx.select(headerColumns).from(bookReturns).innerJoin(books, eq(books.id, bookReturns.bookId))
   .innerJoin(bookAssignments, eq(bookAssignments.id, bookReturns.assignmentId)).innerJoin(people, eq(people.id, bookAssignments.collectorId)); }
@@ -42,7 +49,8 @@ export async function receiptQueue(query: ReceiptQuery) {
 async function readBook(tx: RequestDatabase, id: string, requestedPage?: number, allReceipts = false) {
   const [row] = await headerQuery(tx).where(and(eq(bookReturns.id, id), isNull(bookReturns.deletedAt))).limit(1);
   if (!row) throw new ReceiptFailure("RECEIPT_BOOK_NOT_FOUND", 404);
-  const total = row.returned.lastUsed === null ? 0 : row.returned.lastUsed - row.returned.receiptFrom + 1;
+  const rangeEnd = row.returned.submissionPending && row.returned.finalizedAt === null ? row.returned.receiptTo : row.returned.lastUsed ?? row.returned.receiptFrom - 1;
+  const total = Math.max(0, rangeEnd - row.returned.receiptFrom + 1);
   const [totals] = await tx.select({ saved: count(), valid: sql<number>`count(*) filter (where status = 'VALID')::integer`,
     checkedCount: sql<number>`count(*) filter (where checked)::integer`,
     lastCheckedNumber: sql<number | null>`(array_agg(receipt_number order by updated_at desc, receipt_number desc) filter (where checked))[1]`,
@@ -54,10 +62,12 @@ async function readBook(tx: RequestDatabase, id: string, requestedPage?: number,
   const pageSize = allReceipts ? Math.max(total, 1) : 20;
   const resumeNumber = totals?.lastCheckedNumber ?? row.returned.receiptFrom;
   const page = Math.min(requestedPage ?? Math.floor((resumeNumber - row.returned.receiptFrom) / pageSize) + 1, Math.max(1, Math.ceil(total / pageSize)));
-  const first = row.returned.receiptFrom + (page - 1) * pageSize; const last = Math.min(first + pageSize - 1, row.returned.lastUsed ?? first - 1);
-  const receipts = await tx.select().from(bookReceipts).where(and(eq(bookReceipts.returnId, id), isNull(bookReceipts.deletedAt),
+  const first = row.returned.receiptFrom + (page - 1) * pageSize; const last = Math.min(first + pageSize - 1, rangeEnd);
+  const receipts = await tx.select({ receipt: bookReceipts, historicalSummary: sql<boolean>`public.receipt_is_imported_summary(${bookReceipts.id})`,
+    location: sql<{ district?: string; state?: string }>`public.receipt_historical_location(${bookReceipts.id})` })
+    .from(bookReceipts).where(and(eq(bookReceipts.returnId, id), isNull(bookReceipts.deletedAt),
     sql`${bookReceipts.number} between ${first} and ${last}`)).orderBy(asc(bookReceipts.number));
-  const byNumber = new Map(receipts.map((receipt) => [receipt.number, serialize(receipt)]));
+  const byNumber = new Map(receipts.map(({ receipt, historicalSummary, location }) => [receipt.number, serialize(receipt, historicalSummary, location)]));
   const workflow = await workflowRows(tx, id);
   return receiptBookSchema.parse({ header: header(row), totals: totals ?? { saved: 0, valid: 0, total: 0, cash: 0, digital: 0, cheque: 0 },
     checkedCount: totals?.checkedCount ?? 0, lastCheckedNumber: totals?.lastCheckedNumber ?? null, ...workflow,
@@ -83,7 +93,7 @@ export async function changeReceiptWorkflow(action: z.infer<typeof receiptWorkfl
       await tx.execute(sql`select public.request_receipt_workflow(${action.returnId}::uuid, ${action.number}, ${action.action}, ${action.reason})`);
       return workflowRows(tx, action.returnId);
     }
-    if (actor.role !== "ADMIN") throw new AuthFailure("ACCESS_DENIED");
+    if (actor.role !== "SUPER_ADMIN") throw new AuthFailure("ACCESS_DENIED");
     await tx.execute(sql`select public.review_receipt_workflow(${action.id}::uuid, ${action.action}, ${action.action === "REVIEW_EDIT" ? action.decision : "RESOLVED"}, ${action.reason})`);
     return workflowRows(tx);
   });
@@ -92,7 +102,10 @@ export async function mutateReceiptBook(id: string, action: ReceiptAction) {
   try {
     return await withBooksDatabase(async (tx, actor) => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`dms:receipts:${id}`}))`);
-      if (action.action === "FINALIZE") {
+      if (action.action === "REOPEN") {
+        if (actor.role !== "SUPER_ADMIN") throw new AuthFailure("ACCESS_DENIED");
+        await tx.execute(sql`select public.reopen_receipt_book(${id}::uuid, ${action.version}, ${action.reason})`);
+      } else if (action.action === "FINALIZE") {
         await tx.execute(sql`select public.finalize_receipt_book(${id}::uuid, ${action.version})`);
       } else {
         // The per-book advisory lock above serializes saves. Row locks and return updates
@@ -106,14 +119,15 @@ export async function mutateReceiptBook(id: string, action: ReceiptAction) {
         const reasonId = fixedReason ? context.fixedReasonId ?? "" : action.values.reasonId;
         if (fixedReason && !reasonId) throw new ReceiptFailure("RECEIPT_INVALID", 400);
         const returned = context.returned;
+        if (returned.reopenedAt && !returned.finalizedAt && actor.role !== "SUPER_ADMIN") throw new AuthFailure("ACCESS_DENIED");
         const values = { ...action.values, reasonId, receiverName: returned.collectorName,
           heads: action.values.heads.length === 1 ? action.values.heads.map((head) => ({ ...head, amountPaise: action.values.amountPaise })) : action.values.heads };
-        const [previous] = await tx.select().from(bookReceipts).where(eq(bookReceipts.number, action.number)).limit(1);
+        const [previous] = await tx.select().from(bookReceipts).where(and(eq(bookReceipts.bookId, returned.bookId), eq(bookReceipts.number, action.number))).limit(1);
         if (previous?.returnId === id && values.status === "CANCELLED" && previous.status !== "CANCELLED") {
           throw new ReceiptFailure("RECEIPT_CANCELLATION_NOT_ALLOWED", 409, action.number);
         }
         if (previous && previous.returnId === id && previous.version !== action.version && previous.checked === action.checked
-          && JSON.stringify(receiptValuesSchema.parse(previous.data)) === JSON.stringify(values)) return readBook(tx, id, action.page);
+          && JSON.stringify(receiptValuesSchema.parse(previous.data)) === JSON.stringify(values)) return readBook(tx, id, action.page, true);
         if (returned.finalizedAt) {
           if (!previous || previous.returnId !== id) throw new ReceiptFailure("RECEIPT_LOCKED");
           const [approval] = await tx.select({ id: receiptEditRequests.id }).from(receiptEditRequests).where(and(
@@ -124,7 +138,7 @@ export async function mutateReceiptBook(id: string, action: ReceiptAction) {
         if (previous) {
           if (previous.returnId !== id) throw new ReceiptFailure("RECEIPT_RANGE");
           if (previous.version !== action.version) {
-            if (previous.checked === action.checked && JSON.stringify(receiptValuesSchema.parse(previous.data)) === JSON.stringify(values)) return readBook(tx, id, action.page);
+            if (previous.checked === action.checked && JSON.stringify(receiptValuesSchema.parse(previous.data)) === JSON.stringify(values)) return readBook(tx, id, action.page, true);
             throw new ReceiptFailure("RECEIPT_STALE");
           }
           const saved = await tx.update(bookReceipts).set({ data: values, checked: action.checked, updatedBy: actor.id }).where(and(eq(bookReceipts.id, previous.id), eq(bookReceipts.version, action.version ?? -1))).returning({ id: bookReceipts.id });
@@ -136,7 +150,7 @@ export async function mutateReceiptBook(id: string, action: ReceiptAction) {
             status: action.values.status, amountPaise: action.values.amountPaise, entryByName: actor.fullName, createdBy: actor.id, updatedBy: actor.id });
         }
       }
-      return readBook(tx, id, action.page);
+      return readBook(tx, id, action.page, true);
     });
   } catch (error) { throw receiptDatabaseFailure(error); }
 }
@@ -155,9 +169,10 @@ export function receiptDatabaseFailure(error: unknown) {
     }
     if (["55P03", "57014"].includes(code)) return new ReceiptFailure("RECEIPT_DATABASE_BUSY", 503);
     if (code === "P0001" && "message" in value && typeof value.message === "string"
-      && ["RECEIPT_CASH_LIMIT", "RECEIPT_DIGITAL_LIMIT", "RECEIPT_TOTAL_LIMIT"].includes(value.message)) {
+      && ["RECEIPT_CASH_LIMIT", "RECEIPT_DIGITAL_LIMIT", "RECEIPT_TOTAL_LIMIT", "RECEIPT_REOPEN_REASSIGNED"].includes(value.message)) {
       return new ReceiptFailure(value.message, 409);
     }
+    if (code === "42501" && "message" in value && value.message === "RECEIPT_SUPER_ADMIN_ONLY") return new AuthFailure("ACCESS_DENIED", 403);
     if (code === "42501") return new ReceiptFailure("RECEIPT_SETUP_PERMISSIONS", 503);
     if (code === "25P02") return new ReceiptFailure("RECEIPT_SETUP_REQUIRED", 503, undefined, { sqlState: code });
     if (value.code === "23505") return new ReceiptFailure("RECEIPT_DUPLICATE");

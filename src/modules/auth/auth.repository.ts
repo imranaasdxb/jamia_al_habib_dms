@@ -166,7 +166,7 @@ export async function hasAccountPermission(identity: AuthIdentity, account: Acco
   return withRequestDatabase({ email: identity.email, authUserId: identity.id }, async (transaction) => {
     const person = await findPerson(transaction, identity);
     if (!person || person.id !== account.id || person.status !== "ACTIVE") return false;
-    if (person.role === "ADMIN") return true;
+    if (person.role === "SUPER_ADMIN") return true;
     const [override] = await transaction.select({ allowed: userPermissions.allowed })
       .from(userPermissions).where(and(eq(userPermissions.personId, person.id),
         eq(userPermissions.permission, permission), isNull(userPermissions.deletedAt))).limit(1);

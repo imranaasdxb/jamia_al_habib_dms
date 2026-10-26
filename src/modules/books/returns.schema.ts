@@ -33,8 +33,14 @@ export const returnQuerySchema = z.object({ search: z.string().trim().max(100).d
   overdue: z.enum(["ALL", "OVERDUE"]).default("ALL"),
   tab: z.enum(["OPEN", "RETURNED"]).default("OPEN"), page: z.coerce.number().int().min(1).max(100000).default(1) });
 export const openReturnCaseSchema = z.object({ id: z.uuid(), source: z.enum(["NEW", "LEFTOVER"]), sourceCode: z.string(), book: bookRowSchema, assignment: assignmentRowSchema,
-  commissionBasisPoints: z.number().int().nullable(), hasPhoto: z.boolean(), submissionId: z.uuid().nullable() });
-export const openReturnsResponseSchema = z.object({ data: z.array(openReturnCaseSchema), meta: z.object({ total: z.number(), page: z.number(), pageSize: z.number() }) });
+  commissionBasisPoints: z.number().int().nullable(), hasPhoto: z.boolean(), submissionId: z.uuid().nullable(),
+  enteredReceiptCount: z.number().int().nonnegative().default(0),
+  collectedPaise: money.default(0), collectedCommissionPaise: money.default(0) });
+export const openReturnsResponseSchema = z.object({ data: z.array(openReturnCaseSchema), meta: z.object({
+  total: z.number(), page: z.number(), pageSize: z.number(),
+  fundraiserTotals: z.array(z.object({ collectorId: z.uuid(), collectedPaise: z.number().int().nonnegative(),
+    collectedCommissionPaise: z.number().int().nonnegative() })).default([]),
+}) });
 export const storedExceptionSchema = receiptExceptionSchema.extend({ reasonEn: z.string(), reasonUr: z.string() });
 export const returnRowSchema = z.object({ id: z.uuid(), number: z.string(), caseId: z.uuid(), bookId: z.uuid(), assignmentId: z.uuid(),
   sourceCode: z.string(),

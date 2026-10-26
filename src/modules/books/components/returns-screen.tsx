@@ -19,6 +19,15 @@ import type { Account } from "@/modules/auth/auth.types";
 import type { OpenReturnCase, ReturnRow } from "@/modules/books/returns.schema";
 import type { MessageKey } from "@/lib/i18n/messages";
 
+function submissionBookNumber(row: OpenReturnCase) {
+  const edition = row.book.editionNumber === null ? "" : `ED-${String(row.book.editionNumber).padStart(2, "0")}-`;
+  const start = row.book.bookNumber.match(/\/(\d+)$/)?.[1] ?? row.book.receiptFrom;
+  const book = row.book.editionBookNumber === null ? row.book.bookNumber.replace(/^BOOK/i, "Book")
+    : `Book${row.book.editionBookNumber}/${start}`;
+  const token = row.book.bookType === "TOKEN" && row.book.tokenValuePaise !== null ? `T-${row.book.tokenValuePaise / 100}-` : "";
+  return `${edition}${token}${book}`;
+}
+
 export function ReturnsScreen({ account }: { account: Account }) {
   const { t, language } = useLanguage(); const cache = usePageDataCache(); const router = useRouter(); const scope = `${account.id}:returns:`;
   const [search, setSearch] = usePageState(`${scope}search`, ""); const [page, setPage] = usePageState(`${scope}page`, 1);
@@ -33,9 +42,11 @@ export function ReturnsScreen({ account }: { account: Account }) {
     const payload = await booksRequest(`/api/v1/book-returns?${params}`);
     return tab === "OPEN" ? openReturnsResponseSchema.parse(payload) : returnsResponseSchema.parse(payload);
   }, [params, tab]);
-  const queryKey = `${scope}${tab === "OPEN" ? "open" : "returned"}:${params}`;
+  const queryKey = `${scope}${tab === "OPEN" ? "open:receipt-totals-v1" : "returned"}:${params}`;
   const query = usePageQuery(queryKey, load, { enabled: !current && !lostBook, delay: search ? 300 : 0 });
   const data = query.data; const rows = tab === "OPEN" ? data?.data as OpenReturnCase[] | undefined : undefined;
+  const fundraiserTotals = new Map((data && "fundraiserTotals" in data.meta ? data.meta.fundraiserTotals : [])
+    .map((totals) => [totals.collectorId, totals]));
   const groups = new Map<string, OpenReturnCase[]>();
   rows?.forEach((row) => groups.set(row.assignment.collectorId, [...(groups.get(row.assignment.collectorId) ?? []), row]));
   function saved(row: ReturnRow) {
@@ -78,13 +89,20 @@ export function ReturnsScreen({ account }: { account: Account }) {
     {query.error != null && <p className="mb-4 text-sm text-[var(--danger)]" role="alert">{t(booksError(query.error))}</p>}
     {lossNotice && <p className="mb-4 rounded-xl bg-accent px-4 py-3 text-sm text-primary" role="status">{t("bookLostSuccess")}</p>}
     {!data && query.loading && <p role="status" className="text-sm text-muted-foreground">{t("working")}</p>}
-    <div className="space-y-4">{[...groups].map(([id, assigned]) => { const first = assigned[0]; if (!first) return null; const profile = first.assignment; return <Card key={id} className="overflow-hidden">
+    <div className="space-y-4">{[...groups].map(([id, assigned]) => { const first = assigned[0]; if (!first) return null; const profile = first.assignment; const totals = fundraiserTotals.get(id); return <Card key={id} className="overflow-hidden">
       <button type="button" className="flex w-full items-center gap-3 bg-accent/40 p-4 text-start transition-colors hover:bg-accent" onClick={() => { setCollector(id); setPage(1); }}>
         <span className="flex size-12 items-center justify-center overflow-hidden rounded-full bg-accent text-xl font-semibold text-primary">{first.hasPhoto ? <img alt="" className="size-full object-cover" src={`/api/v1/people/${id}/photo`} /> : profile.collectorName.slice(0, 1)}</span>
-        <span className="flex-1"><strong className="block text-sm">{profile.collectorName}</strong><span className="mt-1 block text-xs text-muted-foreground">{profile.collectorCode} · {profile.phone} · {t("returnsCommission")}: {(first.commissionBasisPoints ?? 0) / 100}%</span></span><ChevronRight size={17} /></button>
+        <span className="min-w-0 flex-1"><strong className="block truncate text-sm">{profile.collectorName}</strong><span className="mt-1 block text-xs text-muted-foreground">{profile.collectorCode}{profile.phone && ` · ${profile.phone}`}</span></span>
+        <span className="flex shrink-0 flex-wrap justify-end gap-x-5 gap-y-2 text-end" title={t("submissionAllBookTotals")}>
+          <span><span className="block text-[10px] text-muted-foreground">{t("returnsTotal")}</span><strong className="mt-1 block text-sm tabular-nums text-primary">{displayMoney(totals?.collectedPaise ?? 0, language)}</strong></span>
+          <span><span className="block text-[10px] text-muted-foreground">{t("returnsCommissionAmount")}</span><strong className="mt-1 block text-sm tabular-nums">{displayMoney(totals?.collectedCommissionPaise ?? 0, language)}</strong></span>
+        </span><ChevronRight size={17} className="shrink-0" /></button>
       <div className="overflow-x-auto"><table className="w-full text-start text-xs [&_th]:bg-muted/50 [&_th]:p-3 [&_th]:text-start [&_th]:font-medium [&_th]:text-muted-foreground [&_td]:border-t [&_td]:border-border [&_td]:p-3">
-        <thead><tr><th>{t("booksNumber")}</th><th>{t("booksReceiptRange")}</th><th>{t("assignNumber")}</th><th>{t("assignReturnDate")}</th><th>{t("status")}</th><th>{t("usersActions")}</th></tr></thead>
-        <tbody>{assigned.map((row) => <tr key={row.id}><td className="font-semibold">{row.sourceCode}</td><td dir="ltr">{row.book.receiptFrom}–{row.book.receiptTo}</td><td>{row.assignment.number}</td><td>{row.assignment.expectedReturnDate}</td>
+        <thead><tr><th>{t("booksNumber")}</th><th>{t("assignNumber")}</th><th className="whitespace-nowrap">{t("returnsTotal")}</th><th className="whitespace-nowrap">{t("returnsCommissionAmount")}</th><th>{t("status")}</th><th>{t("usersActions")}</th></tr></thead>
+        <tbody>{assigned.map((row) => <tr key={row.id}><td><strong className="block whitespace-nowrap font-semibold" dir="ltr" title={row.sourceCode}>{submissionBookNumber(row)}</strong><span className="mt-1 block whitespace-nowrap text-[11px] text-muted-foreground">{t("booksReceiptRange")}: <bdi dir="ltr">{row.book.receiptFrom}–{row.book.receiptTo}</bdi></span></td>
+          <td><span className="block whitespace-nowrap">{row.assignment.number}</span><span className="mt-1 block whitespace-nowrap text-[11px] text-muted-foreground">{t("assignReturnDate")}: {row.assignment.expectedReturnDate}</span></td>
+          <td className="whitespace-nowrap font-semibold tabular-nums text-primary">{row.enteredReceiptCount > 0 ? displayMoney(row.collectedPaise, language) : "—"}</td>
+          <td className="whitespace-nowrap font-semibold tabular-nums">{row.enteredReceiptCount > 0 ? displayMoney(row.collectedCommissionPaise, language) : "—"}</td>
           <td><Badge tone={row.submissionId ? "warning" : row.assignment.expectedReturnDate < indiaToday() ? "danger" : "neutral"}>{t(row.submissionId ? "submissionInProgress" : row.assignment.expectedReturnDate < indiaToday() ? "assignOverdue" : "booksAssigned")}</Badge></td>
           <td><div className="flex flex-wrap items-center gap-2">{row.submissionId ? <Button asChild size="small" variant="outline"><Link href={`/receipt-entry/${row.submissionId}`}>{t("submissionResume")}</Link></Button>
             : <Button size="small" variant="outline" disabled={markingLost} onClick={() => setCurrent(row)}><ClipboardCheck size={15} />{t("submissionStart")}</Button>}
@@ -102,7 +120,7 @@ export function ReturnsScreen({ account }: { account: Account }) {
       {current && <ReturnForm key={current.id} account={account} current={current} onBusyChange={setBusy} onSaved={saved} />}</Dialog>
     <Dialog open={lostBook !== null} busy={markingLost} onOpenChange={(open) => { if (!open) setLostBook(null); }} title={t("bookMarkLost")} description={t("bookLostHelp")}>
       {lostBook && <div className="space-y-4">
-        <div className="rounded-xl bg-muted p-3 text-sm"><strong>{lostBook.sourceCode}</strong><p className="mt-1 text-xs text-muted-foreground">{lostBook.assignment.collectorName} · {lostBook.assignment.number} · {lostBook.book.receiptFrom}–{lostBook.book.receiptTo}</p></div>
+        <div className="rounded-xl bg-muted p-3 text-sm"><strong>{submissionBookNumber(lostBook)}</strong><p className="mt-1 text-xs text-muted-foreground">{lostBook.assignment.collectorName} · {lostBook.assignment.number} · {lostBook.book.receiptFrom}–{lostBook.book.receiptTo}</p></div>
         <div><label className="mb-2 block text-xs font-semibold" htmlFor="book-loss-reason">{t("bookLostReason")} *</label>
           <textarea id="book-loss-reason" className="w-full rounded-xl border border-border bg-card p-3 text-sm" rows={4} minLength={3} maxLength={1000} required disabled={markingLost} value={lossReason} onChange={(event) => setLossReason(event.target.value)} /></div>
         {lossError && <p className="text-xs text-[var(--danger)]" role="alert">{t(lossError)}</p>}
