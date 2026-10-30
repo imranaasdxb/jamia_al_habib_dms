@@ -21,6 +21,8 @@ export async function booksRequest(url: string, options?: RequestInit): Promise<
 export function booksError(error: unknown): MessageKey {
   const code = error instanceof Error ? error.message : "";
   const messages: Record<string, MessageKey> = { ACCESS_DENIED: "authDenied", SESSION_EXPIRED: "authExpired", INVALID_INPUT: "booksInvalid",
+    CERTIFICATE_SETUP_REQUIRED: "certificateSetupRequired", CERTIFICATE_UNAVAILABLE: "certificateFailed", CERTIFICATE_NOT_FOUND: "certificateNotFound",
+    EDITION_SUMMARY_NOT_FOUND: "editionSummaryNotFound", EDITION_SUMMARY_UNAVAILABLE: "editionSummaryFailed",
     BOOK_NUMBER_EXISTS: "booksDuplicate", RECEIPT_RANGE_USED: "booksOverlap", BOOK_EDITION_INVALID: "booksEditionInvalid",
     BOOKS_EDITION_SETUP_REQUIRED: "booksEditionSetupRequired", BOOK_OPTION_INACTIVE: "booksInactiveOption", BOOK_OPERATION_CHANGED: "booksOperationChanged",
     ASSIGNMENT_FUNDRAISER: "assignFundraiserInactive", ASSIGNMENT_AREAS: "assignAreasInactive", ASSIGNMENT_CHANGED: "assignChanged",

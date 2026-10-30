@@ -90,8 +90,10 @@ export async function listOpenReturns(query: ReturnQuery) {
       caseId: bookReturns.caseId, collectorId: bookAssignments.collectorId,
       enteredReceiptCount: count(bookReceipts.id),
       collectedPaise: sql<number>`coalesce(sum(${bookReceipts.amountPaise}) filter (where ${bookReceipts.status} = 'VALID'),0)::double precision`,
-      collectedCommissionPaise: sql<number>`(round(coalesce(sum(${bookReceipts.amountPaise}) filter (where ${bookReceipts.status} = 'VALID'),0)::numeric
-        * ${bookReturns.commissionBasisPoints} / 1000000) * 100)::double precision`,
+      collectedCommissionPaise: sql<number>`(case when count(${bookReceipts.id}) filter (where ${bookReceipts.status} = 'VALID')=0 then 0
+        else coalesce(max((to_jsonb(${bookReturns})->>'historical_commission_paise')::bigint),
+          round(coalesce(sum(${bookReceipts.amountPaise}) filter (where ${bookReceipts.status} = 'VALID'),0)::numeric
+            * ${bookReturns.commissionBasisPoints} / 1000000) * 100) end)::double precision`,
     }).from(bookReturns).innerJoin(bookAssignments, eq(bookAssignments.id, bookReturns.assignmentId))
       .innerJoin(books, eq(books.id, bookReturns.bookId))
       .leftJoin(bookReceipts, and(eq(bookReceipts.returnId, bookReturns.id), isNull(bookReceipts.deletedAt)))

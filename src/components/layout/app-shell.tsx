@@ -35,14 +35,14 @@ const navigation = [
 interface AppShellProps {
   account: Account;
   children: ReactNode;
-  search: string;
-  onSearchChange: (value: string) => void;
+  search?: string;
+  onSearchChange?: (value: string) => void;
   searchLabel?: MessageKey;
   sampleData?: boolean;
   headerTitle?: MessageKey;
 }
 
-export function AppShell({ children, search, onSearchChange, account,
+export function AppShell({ children, search = "", onSearchChange = () => {}, account,
   searchLabel = "searchPlaceholder", sampleData = true, headerTitle }: AppShellProps) {
   const { t, setLanguage } = useLanguage();
   const pathname = usePathname();
@@ -137,16 +137,12 @@ export function AppShell({ children, search, onSearchChange, account,
                 {account.role === "SUPER_ADMIN" && <Link className={"nav-item relative flex min-h-10 w-full items-center gap-2.5 rounded-xl border-0 bg-transparent px-3 py-2 text-start text-[13px] text-muted-foreground transition-colors hover:bg-muted [&[aria-current='page']]:bg-[var(--primary-soft)] [&[aria-current='page']]:font-semibold [&[aria-current='page']]:text-primary [&[aria-current='page']]:before:absolute [&[aria-current='page']]:before:start-0 [&[aria-current='page']]:before:h-5 [&[aria-current='page']]:before:w-0.5 [&[aria-current='page']]:before:rounded-full [&[aria-current='page']]:before:bg-primary [&[aria-current='page']]:before:content-['']"} href="/books/leftovers" aria-current={pathname === "/books/leftovers" ? "page" : undefined}>{t("leftoversScreen")}</Link>}
               </div>
             </div>
-          ) : label === "dashboard" || label === "settings" || label === "masters" || label === "approvals" || label === "flags" ? (
+          ) : (
             <Link key={label} className={"nav-item relative flex min-h-10 w-full items-center gap-2.5 rounded-xl border-0 bg-transparent px-3 py-2 text-start text-[13px] text-muted-foreground transition-colors hover:bg-muted [&[aria-current='page']]:bg-[var(--primary-soft)] [&[aria-current='page']]:font-semibold [&[aria-current='page']]:text-primary [&[aria-current='page']]:before:absolute [&[aria-current='page']]:before:start-0 [&[aria-current='page']]:before:h-5 [&[aria-current='page']]:before:w-0.5 [&[aria-current='page']]:before:rounded-full [&[aria-current='page']]:before:bg-primary [&[aria-current='page']]:before:content-['']"} href={`/${label}`}
               aria-label={t(label)} title={sidebarCollapsed ? t(label) : undefined}
               aria-current={pathname === `/${label}` ? "page" : undefined}>
               <Icon size={18} strokeWidth={1.6} aria-hidden="true" /><span>{t(label)}</span>
             </Link>
-          ) : (
-            <button key={label} type="button" className={"nav-item relative flex min-h-10 w-full items-center gap-2.5 rounded-xl border-0 bg-transparent px-3 py-2 text-start text-[13px] text-muted-foreground transition-colors hover:bg-muted [&[aria-current='page']]:bg-[var(--primary-soft)] [&[aria-current='page']]:font-semibold [&[aria-current='page']]:text-primary [&[aria-current='page']]:before:absolute [&[aria-current='page']]:before:start-0 [&[aria-current='page']]:before:h-5 [&[aria-current='page']]:before:w-0.5 [&[aria-current='page']]:before:rounded-full [&[aria-current='page']]:before:bg-primary [&[aria-current='page']]:before:content-['']"} aria-label={t(label)} title={sidebarCollapsed ? t(label) : undefined} onClick={() => setActiveDialog(label)}>
-              <Icon size={18} strokeWidth={1.6} aria-hidden="true" /><span>{t(label)}</span>
-            </button>
           ))}
         </nav>
         {sampleData && !sidebarCollapsed && <div className={"sidebar-footer mt-3 shrink-0 rounded-xl border border-primary/10 bg-[var(--primary-soft)] px-3 py-3"}><Badge>{t("sampleData")}</Badge></div>}

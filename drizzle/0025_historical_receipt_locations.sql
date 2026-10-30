@@ -10,7 +10,7 @@ DECLARE
 BEGIN
   -- Reuse the existing access/provenance check; edited/manual receipts are excluded.
   IF NOT public.receipt_is_imported_summary(target_receipt) THEN RETURN '{}'::jsonb; END IF;
-  SELECT imported.source_data INTO original_source FROM public.legacy_collection_imports imported
+  SELECT imported.source_data || coalesce(to_jsonb(imported)->'source_corrections','{}'::jsonb) INTO original_source FROM public.legacy_collection_imports imported
     WHERE imported.receipt_id=target_receipt AND imported.status='IMPORTED'
       AND imported.source_key LIKE 'Book3_v1:Sheet1:%' ORDER BY imported.source_row LIMIT 1;
   IF NOT FOUND THEN RETURN '{}'::jsonb; END IF;

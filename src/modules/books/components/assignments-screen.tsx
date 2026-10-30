@@ -47,6 +47,7 @@ export function AssignmentsScreen({ account, initialId = "", initialCode = "" }:
   const data = query.data; const loading = query.loading || query.stale;
   const view = useCallback((id: string) => setViewing(id), []);
   function saved(detail: AssignmentDetail, replayed: boolean) {
+    cache.invalidate(`${account.id}:edition-summary:`);
     cache.setQueryData(`${scope}detail:${detail.assignment.id}`, detail);
     cache.invalidate(`${scope}query:`); cache.invalidate(`${scope}stock:`); cache.invalidate(`${account.id}:books:query:`);
     cache.invalidate(`${account.id}:returns:open:`);

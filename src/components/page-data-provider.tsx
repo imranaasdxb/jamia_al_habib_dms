@@ -17,6 +17,8 @@ interface QueryEntry {
   pending?: { generation: number; promise: Promise<void> };
 }
 
+const dashboardSources = new Set(["books", "assignments", "returns", "leftovers", "receipts", "people", "users", "masters", "edition-summary", "flags", "receipt-review"]);
+
 class PageDataCache {
   private values = new Map<string, unknown>();
   private queries = new Map<string, QueryEntry>();
@@ -51,8 +53,30 @@ class PageDataCache {
   }
 
   invalidate(prefix: string) {
+    const [accountId = "", module = ""] = prefix.split(":");
+    const dashboardPrefix = accountId && module && dashboardSources.has(module) ? `${accountId}:dashboard:query:` : null;
+    const reportsPrefix = accountId && module && dashboardSources.has(module) ? `${accountId}:reports:query:` : null;
+    const reportOptionsPrefix = accountId && ["masters", "books", "edition-summary"].includes(module)
+      ? `${accountId}:reports:options` : null;
+    const reviewsPrefix = accountId && ["people", "receipts", "returns", "flags"].includes(module)
+      ? `${accountId}:receipt-review:` : null;
+    const donationsPrefix = accountId && ["receipts", "returns", "assignments", "books", "people", "masters", "receipt-review", "flags", "edition-summary"].includes(module)
+      ? `${accountId}:donations:query:` : null;
+    const donationDetailPrefix = accountId && ["receipts", "returns", "people", "receipt-review", "flags", "masters"].includes(module)
+      ? `${accountId}:donations:detail:` : null;
+    const donationOptionsPrefix = accountId && ["masters", "books", "edition-summary"].includes(module)
+      ? `${accountId}:donations:options` : null;
+    const certificatePrefix = accountId && module && ["assignments", "returns", "leftovers", "receipts", "people"].includes(module)
+      ? `${accountId}:assignments:fundraiser-certificate:` : null;
     for (const [key, entry] of this.queries) {
-      if (!key.startsWith(prefix)) continue;
+      if (!key.startsWith(prefix) && !(dashboardPrefix && key.startsWith(dashboardPrefix))
+        && !(certificatePrefix && key.startsWith(certificatePrefix))
+        && !(reportsPrefix && key.startsWith(reportsPrefix))
+        && !(reportOptionsPrefix && key.startsWith(reportOptionsPrefix))
+        && !(reviewsPrefix && key.startsWith(reviewsPrefix))
+        && !(donationsPrefix && key.startsWith(donationsPrefix))
+        && !(donationDetailPrefix && key.startsWith(donationDetailPrefix))
+        && !(donationOptionsPrefix && key.startsWith(donationOptionsPrefix))) continue;
       entry.generation += 1;
       entry.state = { ...entry.state, stale: true, loading: false, error: null };
       entry.listeners.forEach((notify) => notify());

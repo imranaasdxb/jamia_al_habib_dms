@@ -1,104 +1,56 @@
 "use client";
-
-import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart,
-  ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { memo } from "react";
+import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ChartNoAxesCombined, Wallet } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
-import { usePageState } from "@/components/page-data-provider";
 import { Card } from "@/components/ui/card";
-import { monthlyPreviews, periodPreviews } from "@/modules/dashboard/dashboard.data";
-import { formatCurrency } from "@/lib/utils";
-import type { ChartInterval, DashboardPeriod } from "@/modules/dashboard/dashboard.data";
+import { displayMoney } from "@/modules/books/returns.schema";
+import type { ChartInterval, DashboardData } from "@/modules/dashboard/dashboard.schema";
 
-export function DashboardCharts({ period, accountId }: { period: DashboardPeriod; accountId: string }) {
-  const { t } = useLanguage();
-  const [interval, setInterval] = usePageState<ChartInterval>(`${accountId}:dashboard:interval`, "monthly");
-  const snapshot = periodPreviews[period];
-  const monthly = (period === "lastMonth" ? monthlyPreviews.slice(0, -1) : monthlyPreviews)
-    .map((point) => ({ label: t(point.label), amount: point.amount }));
-  const weekly = [0.22, 0.36, 0.42].map((share, index) => ({
-    label: t(index === 0 ? "weekOne" : index === 1 ? "weekTwo" : "weekThree"),
-    amount: Math.round(snapshot.total * share),
-  }));
-  const yearly = [
-    { label: "2024–25", amount: 2480000 },
-    { label: "2025–26", amount: 3820000 },
-    { label: "2026–27", amount: monthly.reduce((sum, point) => sum + point.amount, 0) },
-  ];
-  const points = interval === "monthly" ? monthly : interval === "weekly" ? weekly : yearly;
-  const payments = [
-    { name: t("cash"), value: snapshot.cash, color: "var(--chart-primary)" },
-    { name: t("digital"), value: snapshot.digital, color: "var(--chart-secondary)" },
-  ];
-
-  return (
-    <>
-      <Card className={"panel order-1 min-w-0 rounded-[18px] border-card p-[var(--space-panel)] shadow-[0_3px_12px_rgb(16_27_46/3%)] xl:col-span-7 2xl:col-span-6"}>
-        <div className={"panel-header flex items-center justify-between gap-[12px]"}>
-          <h2 className={"panel-title flex items-center gap-2 text-sm font-semibold [&_>_svg]:size-4 [&_>_svg]:text-primary"}><ChartNoAxesCombined size={21} />{t("collectionsTrend")}</h2>
-          <div className={"segmented-control inline-flex gap-[2px] bg-[var(--muted)] p-[3px] rounded-[var(--radius-pill)] [&_button]:[border:0] [&_button]:bg-[transparent] [&_button]:text-[color:var(--muted-foreground)] [&_button]:p-[8px_11px] [&_button]:text-[length:10px] [&_button]:rounded-[var(--radius-pill)] [&_button[aria-pressed='true']]:bg-[var(--primary)] [&_button[aria-pressed='true']]:text-[color:var(--primary-foreground)]"} aria-label={t("collectionsTrend")}>
-            {(["monthly", "weekly", "yearly"] as const).map((value) => (
-              <button key={value} type="button" aria-pressed={interval === value}
-                onClick={() => setInterval(value)}>{t(value)}</button>
-            ))}
-          </div>
+export const DashboardCharts = memo(function DashboardCharts({ data, trend, interval, onInterval, loading, trendLoading }: {
+  data?: DashboardData; trend?: DashboardData["trend"]; interval: ChartInterval;
+  onInterval: (interval: ChartInterval) => void; loading: boolean; trendLoading: boolean;
+}) {
+  const { t, language } = useLanguage(); const locale = language === "ur" ? "ur-IN" : "en-IN";
+  const money = (value: number) => displayMoney(value, language);
+  const points = trend?.map((point) => ({ amountPaise: point.amountPaise, label: new Intl.DateTimeFormat(locale, {
+    ...(interval === "yearly" ? { year: "numeric" as const } : interval === "monthly"
+      ? { month: "short" as const, year: "2-digit" as const } : { day: "2-digit" as const, month: "short" as const }), timeZone: "UTC",
+  }).format(new Date(`${point.date}T00:00:00Z`)) })) ?? [];
+  const payments = data ? [
+    { name: t("receiptCash"), value: data.collection.cashPaise, color: "var(--chart-primary)" },
+    { name: t("receiptDigital"), value: data.collection.digitalPaise, color: "var(--chart-secondary)" },
+    { name: t("receiptCheque"), value: data.collection.chequePaise, color: "#d49b38" },
+  ] : [];
+  const total = data?.collection.collectedPaise ?? 0;
+  return <>
+    <Card className="min-w-0 rounded-[18px] p-5 xl:col-span-8">
+      <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="flex items-center gap-2 text-sm font-semibold"><ChartNoAxesCombined size={18} className="text-primary" />{t("collectionsTrend")}</h2>
+        <div className="inline-flex gap-1 rounded-full bg-muted p-1" aria-label={t("collectionsTrend")}>{(["monthly", "weekly", "yearly"] as const).map((value) => <button key={value} type="button" aria-pressed={interval === value} onClick={() => onInterval(value)} className="rounded-full px-3 py-1.5 text-[10px] text-muted-foreground transition-colors hover:text-primary aria-pressed:bg-primary aria-pressed:text-primary-foreground">{t(value)}</button>)}</div>
+      </div><p className="mt-2 text-[11px] text-muted-foreground">{t("dashboardTrendScope")}</p>
+      <div className="mt-4 h-[250px] w-full [direction:ltr]" aria-busy={trendLoading || undefined} role="img" aria-label={t("collectionsTrend")}>
+        {trendLoading ? <div className="h-full animate-pulse rounded-xl bg-muted" /> : points.some((point) => point.amountPaise > 0) ? <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+          <AreaChart data={points} margin={{ top: 12, right: 12, bottom: 0, left: 0 }}><CartesianGrid vertical={false} stroke="var(--border)" />
+            <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: "var(--muted-foreground)", fontSize: 10 }} tickMargin={10} minTickGap={22} />
+            <YAxis axisLine={false} tickLine={false} width={65} tick={{ fill: "var(--muted-foreground)", fontSize: 10 }} tickFormatter={(value: number) => new Intl.NumberFormat(locale, { style: "currency", currency: "INR", notation: "compact", maximumFractionDigits: 1 }).format(value / 100)} />
+            <Tooltip formatter={(value) => [money(Number(value)), t("collection")]} contentStyle={{ background: "var(--card)", color: "var(--foreground)", border: "1px solid var(--border)", borderRadius: "12px" }} />
+            <Area type="monotone" dataKey="amountPaise" stroke="var(--chart-primary)" strokeWidth={2.5} fill="var(--chart-fill)" dot={{ r: 3, fill: "var(--chart-primary)" }} isAnimationActive={false} />
+          </AreaChart>
+        </ResponsiveContainer> : <div className="flex h-full items-center justify-center rounded-xl bg-muted/30 text-xs text-muted-foreground">{t("dashboardNoReceipts")}</div>}
+      </div>
+    </Card>
+    <Card className="min-w-0 rounded-[18px] p-5 xl:col-span-4"><h2 className="flex items-center gap-2 text-sm font-semibold"><Wallet size={18} className="text-primary" />{t("paymentBreakdown")}</h2>
+      <div className="mt-4 flex flex-col items-center gap-4" aria-busy={loading || undefined}>
+        <div className="relative size-[190px] [direction:ltr]" role="img" aria-label={t("paymentBreakdown")}>
+          {loading ? <div className="size-full animate-pulse rounded-full border-[22px] border-muted" /> : total > 0 ? <PieChart width={190} height={190}>
+            <Pie data={payments.filter((payment) => payment.value > 0)} dataKey="value" nameKey="name" innerRadius={61} outerRadius={88} startAngle={90} endAngle={-270} paddingAngle={2} stroke="var(--card)" isAnimationActive={false}>
+              {payments.filter((payment) => payment.value > 0).map((payment) => <Cell key={payment.name} fill={payment.color} />)}
+            </Pie><Tooltip formatter={(value) => money(Number(value))} />
+          </PieChart> : <div className="size-full rounded-full border-[22px] border-muted" />}
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"><strong className="max-w-[122px] break-words text-center text-base font-semibold tabular-nums">{data ? money(total) : "—"}</strong><span className="mt-1 text-[10px] text-muted-foreground">{t("total")}</span></div>
         </div>
-        <div className={"chart-summary mt-[21px] [&_strong]:block [&_strong]:text-[length:31px] [&_strong]:tracking-[-1px] [&_p]:text-[color:var(--muted-foreground)] [&_p]:mt-[4px] [&_p]:text-[length:12px]"}>
-          <strong className={"numeric tabular-nums"} dir="ltr">{formatCurrency(snapshot.total)}</strong>
-          <p>{t(period === "thisMonth" ? "collectionMonth" : "collectionLastMonth")}</p>
-        </div>
-        <div className={"trend-chart w-full h-[222px] mt-[16px] [direction:ltr]"} role="img" aria-label={t("collectionsTrend")}>
-          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-            <AreaChart data={points} margin={{ top: 12, right: 12, bottom: 0, left: 0 }}>
-              <CartesianGrid vertical={false} stroke="var(--border)" />
-              <XAxis dataKey="label" axisLine={false} tickLine={false}
-                tick={{ fill: "var(--muted-foreground)", fontSize: 10 }} tickMargin={12} />
-              <YAxis axisLine={false} tickLine={false} width={58}
-                tick={{ fill: "var(--muted-foreground)", fontSize: 10 }}
-                tickFormatter={(value: number) => value >= 100000
-                  ? `₹${(value / 100000).toFixed(1)}L` : `₹${Math.round(value / 1000)}k`} />
-              <Tooltip formatter={(value) => [formatCurrency(Number(value)), t("collection")]}
-                contentStyle={{ background: "var(--card)", color: "var(--foreground)",
-                  border: "1px solid var(--border)", borderRadius: "var(--radius-control)" }} />
-              <Area type="monotone" dataKey="amount" stroke="var(--chart-primary)"
-                strokeWidth={2.5} fill="var(--chart-fill)" dot={{ r: 3, fill: "var(--chart-primary)" }}
-                isAnimationActive={false} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </Card>
-      <Card className={"panel order-2 min-w-0 rounded-[18px] border-card p-[var(--space-panel)] shadow-[0_3px_12px_rgb(16_27_46/3%)] xl:col-span-5 2xl:col-span-3"}>
-        <div className={"panel-header flex items-center justify-between gap-[12px]"}>
-          <h2 className={"panel-title flex items-center gap-2 text-sm font-semibold [&_>_svg]:size-4 [&_>_svg]:text-primary"}><Wallet size={21} />{t("paymentBreakdown")}</h2>
-          <span className={"muted text-[color:var(--muted-foreground)] text-xs"}>{t(period)}</span>
-        </div>
-        <div className={"payment-content flex min-h-[290px] flex-col items-center justify-center gap-4 pt-4"}>
-          <div className={"payment-chart relative w-[205px] h-[205px] [direction:ltr]"} role="img" aria-label={t("paymentBreakdown")}>
-            <PieChart width={205} height={205}>
-              <Pie data={payments} dataKey="value" nameKey="name" innerRadius={64}
-                outerRadius={96} startAngle={90} endAngle={-270} paddingAngle={2}
-                stroke="var(--card)" isAnimationActive={false}>
-                {payments.map((payment) => <Cell key={payment.name} fill={payment.color} />)}
-              </Pie>
-              <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-            </PieChart>
-            <div className={"donut-total absolute inset-0 flex flex-col items-center justify-center pointer-events-none [&_strong]:text-[length:20px] [&_strong]:tracking-[-.6px] [&_span]:mt-[5px] [&_span]:text-[length:11px] [&_span]:text-[color:var(--muted-foreground)]"}>
-              <strong className={"numeric tabular-nums"} dir="ltr">{formatCurrency(snapshot.total)}</strong>
-              <span>{t("total")}</span>
-            </div>
-          </div>
-          <div className={"payment-legend flex flex-wrap justify-center gap-x-5 gap-y-3 text-xs"}>
-            {payments.map((payment, index) => (
-              <div key={payment.name}>
-                <span className={"legend-label flex gap-[9px] items-center text-[length:12px]"}><span className={index === 0
-                  ? "legend-dot w-[10px] h-[10px] rounded-[50%] bg-[var(--chart-primary)]" : "legend-dot w-[10px] h-[10px] rounded-[50%] bg-[var(--chart-primary)] legend-dot-secondary bg-[var(--chart-secondary)]"} />{payment.name}</span>
-                <strong className={"legend-value block ms-[19px] font-[650] mt-[7px] numeric tabular-nums"} dir="ltr">{formatCurrency(payment.value)}</strong>
-                <p className={"legend-percentage ms-[19px] mt-[5px] text-[color:var(--muted-foreground)] text-[length:11px] numeric tabular-nums"}>{Math.round(payment.value / snapshot.total * 100)}%</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </Card>
-    </>
-  );
-}
+        <div className="w-full space-y-2.5">{payments.map((payment) => <div key={payment.name} className="flex items-center justify-between gap-3 text-xs"><span className="flex items-center gap-2"><span className="size-2 rounded-full" style={{ backgroundColor: payment.color }} />{payment.name}</span><span className="text-end"><strong className="font-medium tabular-nums">{money(payment.value)}</strong><span className="ms-2 text-[10px] text-muted-foreground">{total > 0 ? Math.round(payment.value / total * 100) : 0}%</span></span></div>)}</div>
+      </div>
+    </Card>
+  </>;
+});

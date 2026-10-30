@@ -56,6 +56,7 @@ export function LeftoversScreen({ account }: { account: Account }) {
     : rows.length < 150 && !rows.some((item) => item.book.id === row.book.id) ? [...rows, row] : rows), []);
   const assign = useCallback((row: LeftoverRow) => { setSelected([row]); setOpen(true); }, []);
   function saved(detail: AssignmentDetail) {
+    cache.invalidate(`${account.id}:edition-summary:`);
     const updatedBooks = new Map(detail.books.map((book) => [book.id, book]));
     const changed = selected.filter((row) => updatedBooks.has(row.book.id)); const changedIds = new Set(changed.map((row) => row.id));
     cache.setQueryData(`${account.id}:assignments:detail:${detail.assignment.id}`, detail);

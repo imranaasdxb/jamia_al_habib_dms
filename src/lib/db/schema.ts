@@ -186,9 +186,10 @@ export const bookReturns = pgTable("book_returns", {
   receiptFrom: integer("receipt_from").notNull(), receiptTo: integer("receipt_to").notNull(), receiptsUsed: integer("receipts_used").notNull(),
   lastUsed: integer("last_used"), remainingReceipts: integer("remaining_receipts").notNull().generatedAlwaysAs(sql`case when last_used is null then receipt_to - receipt_from + 1 else receipt_to - last_used end`),
   commissionBasisPoints: integer("commission_basis_points").notNull(),
-  commissionPaise: bigint("commission_paise", { mode: "number" }).notNull().generatedAlwaysAs(sql`round(total_paise::numeric * commission_basis_points / 1000000) * 100`),
-  netPaise: bigint("net_paise", { mode: "number" }).notNull().generatedAlwaysAs(sql`total_paise - round(total_paise::numeric * commission_basis_points / 1000000) * 100`),
-  cashHandoverPaise: bigint("cash_handover_paise", { mode: "number" }).notNull().generatedAlwaysAs(sql`cash_paise - round(total_paise::numeric * commission_basis_points / 1000000) * 100`),
+  // Derived by the database trigger; historical imports preserve the exact paid amount.
+  commissionPaise: bigint("commission_paise", { mode: "number" }).notNull().default(0),
+  netPaise: bigint("net_paise", { mode: "number" }).notNull().default(0),
+  cashHandoverPaise: bigint("cash_handover_paise", { mode: "number" }).notNull().default(0),
   commissionGiven: boolean("commission_given").notNull().default(false),
   exceptions: jsonb("exceptions").$type<{ receiptNumber: number; status: "CANCELLED" | "TORN" | "LOST"; reasonId: string; reasonEn: string; reasonUr: string }[]>().notNull().default([]),
   flagReasonId: uuid("flag_reason_id").references(() => masterRecords.id, { onDelete: "restrict" }),

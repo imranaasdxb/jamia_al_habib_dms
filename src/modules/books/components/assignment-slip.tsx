@@ -1,24 +1,32 @@
 "use client";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { createPortal } from "react-dom";
-import { Printer } from "lucide-react";
+import { Award, Printer } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { usePageQuery } from "@/components/page-data-provider";
 import { Button } from "@/components/ui/button";
 import { booksError, booksRequest } from "@/modules/books/books.client";
 import { assignmentDetailResponseSchema } from "@/modules/books/assignments.schema";
 import { formatCurrency } from "@/lib/utils";
+import { AuthorizationCertificateView } from "@/modules/books/components/authorization-certificate";
 import type { AssignmentDetail } from "@/modules/books/assignments.schema";
 
 export function AssignmentSlipView({ accountId, id }: { accountId: string; id: string }) {
   const { t, language } = useLanguage();
+  const [showCertificate, setShowCertificate] = useState(false);
   const fetchData = useCallback(async () => assignmentDetailResponseSchema.parse(await booksRequest(`/api/v1/book-assignments/${id}`)).data, [id]);
   const query = usePageQuery(`${accountId}:assignments:detail:${id}`, fetchData);
   return <>{!query.data && (query.loading || query.stale) && <p className={"muted text-[color:var(--muted-foreground)]"} role="status">{t("working")}</p>}
     {query.error != null && <p className={"field-error block mt-[7px] text-[length:11px] text-[color:var(--danger)]"} role="alert">{t(booksError(query.error))}</p>}
-    {query.data && <><div className={"assignment-slip-actions flex justify-end py-[15px]"}><Button variant="outline" onClick={() => window.print()}><Printer size={17} />{t("assignPrint")}</Button></div>
+    {query.data && <><div className="my-3 flex flex-wrap items-center gap-2 border-b border-border pb-3">
+      <Button variant={showCertificate ? "outline" : "default"} size="small" onClick={() => setShowCertificate(false)}>{t("assignSlip")}</Button>
+      <Button variant={showCertificate ? "default" : "outline"} size="small" disabled={!query.data.books.length} onClick={() => setShowCertificate(true)}><Award size={16} />{t("certificateView")}</Button>
+      {!showCertificate && <Button className="ms-auto" size="small" variant="outline" onClick={() => window.print()}><Printer size={17} />{t("assignPrint")}</Button>}
+    </div>
+    {showCertificate ? <AuthorizationCertificateView accountId={accountId} assignmentId={id} /> : <>
       <AssignmentSlip data={query.data} />
       {createPortal(<div id="assignment-print-root" dir={language === "ur" ? "rtl" : "ltr"} lang={language} className={"hidden print:[body:has(>_&)_>_*:not(#assignment-print-root)]:hidden! print:[body:has(>_&)]:overflow-visible! print:[body:has(>_&)]:h-auto! print:[body:has(>_&)]:pointer-events-auto! print:block! print:[&_.assignment-slip]:p-0 print:[&_.assignment-slip]:text-[color:#111] print:[&_.assignment-slip]:bg-[white] print:[&_.table-container]:overflow-visible print:[&_.assignment-slip_dl]:grid-cols-[1fr_1fr] print:[&_thead]:[display:table-header-group] print:[&_tr]:[break-inside:avoid] print:[&_footer]:[break-inside:avoid] print:[&_.books-table_:is(th,_td)]:text-[color:#111] print:[&_.books-table_:is(th,_td)]:bg-[white] print:[&_.books-table_:is(th,_td)]:[border-bottom:1px_solid_#ddd]"}><AssignmentSlip data={query.data} /></div>, document.body)}</>}
+    </>}
   </>;
 }
 function AssignmentSlip({ data }: { data: AssignmentDetail }) {

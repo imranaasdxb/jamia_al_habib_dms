@@ -1,6 +1,7 @@
 "use client";
 import { Fragment, memo, useCallback, useState } from "react";
-import { Eye, ImageIcon, PencilLine, Plus, RefreshCw, Search } from "lucide-react";
+import Link from "next/link";
+import { ChartNoAxesCombined, Eye, ImageIcon, PencilLine, Plus, RefreshCw, Search } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { AppShell } from "@/components/layout/app-shell";
 import { usePageDataCache, usePageQuery, usePageState } from "@/components/page-data-provider";
@@ -12,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { MasterForm } from "@/modules/masters/components/master-form";
 import { EditionReceiptImage } from "@/modules/masters/components/edition-receipt-image";
 import { editionLabel } from "@/modules/masters/editions.schema";
+import { EditionTotalsCards } from "@/modules/books/components/edition-totals-cards";
 import { masterCategories, masterLevelLabels, mastersError, mastersRequest } from "@/modules/masters/masters.client";
 import { fixedMasterKinds, mastersResponseSchema } from "@/modules/masters/masters.schema";
 import type { MasterKind, MasterPage, MasterQuery, MasterRow, MasterValues } from "@/modules/masters/masters.schema";
@@ -46,6 +48,8 @@ const MasterTableRow = memo(function MasterTableRow({ row, onEdit, onView }: {
     <td><Badge tone={row.active ? "success" : "neutral"}>{t(row.active ? "usersActive" : "usersInactive")}</Badge></td>
     <td><div className={"masters-row-actions flex items-center justify-center gap-[4px] [&_.button-icon]:w-[30px] [&_.button-icon]:h-[30px] [&_.button-icon]:min-w-[30px] [&_.button-icon]:p-0"}><Button variant="ghost" size="icon" aria-label={t("usersView")} title={t("usersView")} onClick={() => onView(row)}><Eye size={17} /></Button>
       <Button variant="ghost" size="icon" aria-label={t("mastersEdit")} title={t("mastersEdit")} onClick={() => onEdit(row)}><PencilLine size={17} /></Button>
+      {row.kind === "EDITION" && <Button asChild variant="ghost" size="icon" className="text-primary"><Link prefetch={false}
+        href={`/books/editions/${row.id}/summary`} aria-label={t("editionSummary")} title={t("editionSummary")}><ChartNoAxesCombined size={17} aria-hidden="true" /></Link></Button>}
     </div></td>
   </tr>;
 });
@@ -99,6 +103,7 @@ function MasterCategory({ kind, accountId }: { kind: MasterKind; accountId: stri
     cache.invalidate(`${scope}query:${kind}:`);
     cache.invalidate(`${scope}options:${kind}:`);
     if (kind === "EDITION") {
+      cache.invalidate(`${accountId}:edition-summary:${row.id}:`);
       cache.invalidate(`${accountId}:books:query:`);
       cache.invalidate(`${accountId}:books:entry-context:`);
       cache.invalidate(`${accountId}:assignments:stock:`);
@@ -110,10 +115,12 @@ function MasterCategory({ kind, accountId }: { kind: MasterKind; accountId: stri
     setOpen(false); setBusy(false); setNotice(true);
   }
   return <section className={"masters-category min-w-0"} aria-label={category ? t(category.label) : t("masters")}>
-    <div className={"masters-category-header flex justify-between items-center gap-[12px] min-h-[36px] [&_h2]:text-[length:18px]"}><h2>{category && t(category.label)}</h2>
-      {!fixedMasterKinds.includes(kind) && <Button size="small" onClick={() => { setInitialParent(undefined); setEditing(undefined); setOpen(true); }}><Plus size={16} />{t("mastersAdd")}</Button>}</div>
-    <p className={"masters-category-hint text-[color:var(--muted-foreground)] text-[length:11px] leading-[1.8] my-[10px_20px]"}>{t(kind === "DONATION_CATEGORY" ? "mastersDonationCategoriesHint"
-      : fixedMasterKinds.includes(kind) ? "mastersFixedHint" : "mastersInactiveHint")}</p>
+    <div className={kind === "EDITION" ? "mb-5 flex flex-wrap items-start gap-3" : "masters-category-header flex justify-between items-center gap-[12px] min-h-[36px] [&_h2]:text-[length:18px]"}>
+      {kind === "EDITION" ? <EditionTotalsCards accountId={accountId} /> : <h2>{category && t(category.label)}</h2>}
+      {!fixedMasterKinds.includes(kind) && <Button size={kind === "EDITION" ? "default" : "small"} className={kind === "EDITION" ? "ms-auto shrink-0 rounded-xl text-xs" : undefined}
+        onClick={() => { setInitialParent(undefined); setEditing(undefined); setOpen(true); }}><Plus size={16} />{t(kind === "EDITION" ? "editionAddBook" : "mastersAdd")}</Button>}</div>
+    {kind !== "EDITION" && <p className={"masters-category-hint text-[color:var(--muted-foreground)] text-[length:11px] leading-[1.8] my-[10px_20px]"}>{t(kind === "DONATION_CATEGORY" ? "mastersDonationCategoriesHint"
+      : fixedMasterKinds.includes(kind) ? "mastersFixedHint" : "mastersInactiveHint")}</p>}
     {notice && <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8] masters-notice mb-[18px]"} role="status">{t("mastersSaved")}</p>}
     <Card className={"masters-filter-bar flex items-center gap-[10px] p-[14px] max-[1100px]:flex-wrap"}><label className={"masters-search relative flex-1 [&_>_svg]:absolute [&_>_svg]:start-[13px] [&_>_svg]:top-[15px] [&_>_svg]:text-[color:var(--muted-foreground)] [&_.input]:ps-[39px]"}><Search size={17} aria-hidden="true" />
       <Input type="search" maxLength={100} value={search} placeholder={t("mastersSearch")} aria-label={t("mastersSearch")}
@@ -127,13 +134,16 @@ function MasterCategory({ kind, accountId }: { kind: MasterKind; accountId: stri
         const value = event.target.value;
         if (value === "ALL" || value === "ACTIVE" || value === "INACTIVE") { setStatus(value); setPage(1); }
       }}><option value="ALL">{t("peopleAllStatuses")}</option><option value="ACTIVE">{t("usersActive")}</option><option value="INACTIVE">{t("usersInactive")}</option></select>
-      <Button variant="outline" size="icon" loading={loading} aria-label={t("usersRefresh")} onClick={() => cache.invalidate(`${scope}query:${kind}:`)}><RefreshCw size={17} /></Button>
+      <Button variant="outline" size="icon" loading={loading} aria-label={t("usersRefresh")} onClick={() => {
+        cache.invalidate(`${scope}query:${kind}:`);
+        if (kind === "EDITION") cache.invalidate(`${accountId}:edition-summary:`);
+      }}><RefreshCw size={17} /></Button>
     </Card>
     <div className={"masters-results flex justify-between items-center gap-[14px] text-[length:12px] my-[20px_13px] min-h-[20px]"}><span>{t("mastersRecords")} {data?.total ?? "—"}</span><span className={"muted text-[color:var(--muted-foreground)]"} role="status">{loading && t(data ? "usersUpdating" : "working")}</span></div>
     {query.error != null && <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8] auth-error bg-[var(--danger-soft)] text-[color:var(--danger)]"} role="alert">{t(mastersError(query.error))}</p>}
     <Card className={"masters-table-card overflow-hidden [&_.table-container]:mt-0 [&_.masters-table_:is(th,_td)]:p-[16px] [&_.masters-table_:is(th,_td)]:text-start [&_.masters-table_:is(th,_td)]:align-middle [&_.masters-table_:is(th,_td)]:[overflow-wrap:anywhere] [&_.masters-table_:is(th,_td):first-child]:ps-[20px] [&_.masters-table_:is(th,_td):last-child]:pe-[20px] [&_.masters-table_thead_th]:bg-[var(--muted)] [&_.masters-table_thead_th]:text-[length:11px] [&_.masters-table_thead_th]:font-semibold [&_.masters-table_thead_th]:[border-bottom:1px_solid_var(--border)] [&_.masters-table_tbody_td]:text-[length:12px] [&_.masters-table_tbody_td]:leading-[1.6] [&_.masters-table_:is(th,_td):nth-child(4)]:text-center [&_.masters-table_:is(th,_td):nth-child(5)]:text-center"} aria-busy={loading}><div className={"table-container overflow-x-auto mt-[18px] [scrollbar-width:thin] [scrollbar-color:var(--emerald-300)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--emerald-300)]"}><table className={"data-table w-full border-collapse text-start [&_th]:text-[length:10px] [&_th]:text-[color:var(--muted-foreground)] [&_th]:font-normal [&_th]:text-start [&_th]:p-[0_8px_12px] [&_td]:[border-top:1px_solid_var(--border)] [&_td]:p-[13px_8px] [&_td]:text-[length:11px] [&_th:first-child]:ps-0 [&_td:first-child]:ps-0 [&_th:last-child]:pe-0 [&_td:last-child]:pe-0 [&_th.amount-cell]:text-end masters-table [table-layout:fixed] min-w-[880px] [&_tbody_tr:not(.masters-donation-group):hover]:bg-[var(--background)]"}>
-      <colgroup><col className={"masters-col-name w-[38%]"} /><col className={"masters-col-code w-[20%]"} /><col className={"masters-col-details w-[20%]"} />
-        <col className={"masters-col-status w-[10%]"} /><col className={"masters-col-actions w-[12%]"} /></colgroup>
+      <colgroup><col className={`masters-col-name ${kind === "EDITION" ? "w-[34%]" : "w-[38%]"}`} /><col className={"masters-col-code w-[20%]"} /><col className={"masters-col-details w-[20%]"} />
+        <col className={"masters-col-status w-[10%]"} /><col className={`masters-col-actions ${kind === "EDITION" ? "w-[16%]" : "w-[12%]"}`} /></colgroup>
       <thead><tr><th scope="col">{t("mastersName")}</th><th scope="col">{t(kind === "EDITION" ? "editionCode" : "mastersCode")}</th><th scope="col">{t("mastersDetails")}</th>
         <th scope="col">{t("status")}</th><th scope="col">{t("usersActions")}</th></tr></thead>
       <tbody>{data?.rows.map((row, index) => <Fragment key={row.id}>
@@ -192,8 +202,7 @@ export function MastersScreen({ account, editionOnly = false }: { account: Accou
   const [selectedKind, setKind] = usePageState<MasterKind>(`${account.id}:masters:category`, "BOOK_TYPE");
   const kind = selectedKind === "EDITION" ? "BOOK_TYPE" : selectedKind === "DONATION_CATEGORY" ? "DONATION_HEAD" : selectedKind;
   if (editionOnly) return <AppShell account={account} headerTitle="mastersEditions" sampleData={false} search="" onSearchChange={() => {}}>
-    <div className="mb-[22px]"><h1 className="text-[34px] font-bold tracking-[-1.3px] [html[lang='ur']_&]:tracking-normal">{t("mastersEditions")}</h1>
-      <p className="mt-2 text-[var(--muted-foreground)]">{t("editionFormHelp")}</p></div>
+    <div className="mb-5"><h1 className="text-[28px] font-bold tracking-tight">{t("mastersEditions")}</h1></div>
     <MasterCategory key="EDITION" accountId={account.id} kind="EDITION" />
   </AppShell>;
   return <AppShell account={account} headerTitle="masters" sampleData={false} search="" onSearchChange={() => {}}>
@@ -204,3 +213,6 @@ export function MastersScreen({ account, editionOnly = false }: { account: Accou
     </nav><MasterCategory key={kind} accountId={account.id} kind={kind} /></div>
   </AppShell>;
 }
+
+
+

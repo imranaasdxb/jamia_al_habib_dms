@@ -79,6 +79,8 @@ export function ReceiptBookScreen({ account, returnId }: { account: Account; ret
   const approved = record && data?.requests.some((row) => row.receiptId === record.id && row.requestedBy === account.id && row.status === "APPROVED" && row.baseVersion === record.version);
   const activeRequest = record && data?.requests.find((row) => row.receiptId === record.id && row.requestedBy === account.id && row.baseVersion === record.version && (row.status === "PENDING" || row.status === "APPROVED"));
   function changed(book: ReceiptBook, finalized = false) {
+    cache.invalidate(`${account.id}:edition-summary:`);
+    cache.invalidate(`${account.id}:receipts:donors:`);
     cache.setQueryData(key, book);
     const end = book.header.finalized ? book.header.returned.lastUsed ?? book.header.returned.receiptFrom : book.header.returned.receiptTo;
     if (selected > end) setSelected(end);
@@ -90,7 +92,7 @@ export function ReceiptBookScreen({ account, returnId }: { account: Account; ret
       cache.invalidate(`${account.id}:assignments:query:`);
       cache.invalidate(`${account.id}:assignments:detail:${book.header.returned.assignmentId}`);
       cache.invalidate(`${account.id}:books:query:`); cache.invalidate(`${account.id}:leftovers:`);
-      cache.invalidate(`${account.id}:flags:`); cache.invalidate(`${account.id}:receipts:donors:`);
+      cache.invalidate(`${account.id}:flags:`);
     }
   }
   function navigate(number: number, discard = false) {
@@ -121,7 +123,7 @@ export function ReceiptBookScreen({ account, returnId }: { account: Account; ret
       const result = receiptWorkflowSchema.parse(await receiptRequest("/api/v1/receipt-workflow", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: mode, returnId, number: current.number, reason: requestReason }) }));
       cache.updateQueries<ReceiptBook>(`${scope}query:`, (previous) => ({ ...previous, requests: result.data.requests, issues: result.data.issues }));
       cache.invalidate(`${account.id}:receipt-review:`); cache.invalidate(`${account.id}:flags:`);
-      if (mode === "RAISE_ISSUE" && data?.header.finalized) cache.invalidate(`${scope}query:`);
+      if (mode === "RAISE_ISSUE" && data?.header.finalized) { cache.invalidate(`${scope}query:`); cache.invalidate(`${account.id}:edition-summary:`); }
       setMode(null); setReason(""); setNotice("submissionRequestSent");
     } catch (failure) { setError(receiptError(failure)); } finally { setSending(false); }
   }

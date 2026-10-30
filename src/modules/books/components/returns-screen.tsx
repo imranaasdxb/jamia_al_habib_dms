@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
-import { ClipboardCheck, RefreshCw, Search, ChevronRight, BookX } from "lucide-react";
+import { Award, ClipboardCheck, RefreshCw, Search, ChevronRight, BookX } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { AppShell } from "@/components/layout/app-shell";
 import { usePageDataCache, usePageQuery, usePageState } from "@/components/page-data-provider";
@@ -15,9 +15,11 @@ import { booksError, booksRequest } from "@/modules/books/books.client";
 import { indiaToday } from "@/modules/books/assignments.schema";
 import { bookLossResponseSchema, displayMoney, openReturnsResponseSchema, returnsResponseSchema } from "@/modules/books/returns.schema";
 import { ReturnForm } from "@/modules/books/components/return-form";
+import { AuthorizationCertificateView } from "@/modules/books/components/authorization-certificate";
 import type { Account } from "@/modules/auth/auth.types";
 import type { OpenReturnCase, ReturnRow } from "@/modules/books/returns.schema";
 import type { MessageKey } from "@/lib/i18n/messages";
+import type { CertificateScope } from "@/modules/books/certificates.schema";
 
 function submissionBookNumber(row: OpenReturnCase) {
   const edition = row.book.editionNumber === null ? "" : `ED-${String(row.book.editionNumber).padStart(2, "0")}-`;
@@ -28,12 +30,21 @@ function submissionBookNumber(row: OpenReturnCase) {
   return `${edition}${token}${book}`;
 }
 
+function FundraiserCertificateAction({ rows, onView }: { rows: OpenReturnCase[]; onView: (id: string, fundraiserId: string) => void }) {
+  const { t } = useLanguage(); const first = rows[0]?.assignment;
+  return <div className="flex flex-wrap items-center gap-2 border-t border-primary/10 bg-accent/20 px-4 py-2">
+    <span className="text-[11px] font-medium text-muted-foreground">{t("certificateFundraiser")}</span>
+    <Button size="small" variant="outline" className="ms-auto" disabled={!first} onClick={() => { if (first) onView(first.id, first.collectorId); }}><Award size={15} aria-hidden="true" />{t("certificateView")}</Button>
+  </div>;
+}
+
 export function ReturnsScreen({ account }: { account: Account }) {
   const { t, language } = useLanguage(); const cache = usePageDataCache(); const router = useRouter(); const scope = `${account.id}:returns:`;
   const [search, setSearch] = usePageState(`${scope}search`, ""); const [page, setPage] = usePageState(`${scope}page`, 1);
   const [tab, setTab] = usePageState<"OPEN" | "RETURNED">(`${scope}tab`, "OPEN");
   const [collectorId, setCollector] = usePageState(`${scope}collector`, ""); const [overdue, setOverdue] = usePageState(`${scope}overdue`, "ALL");
   const [current, setCurrent] = useState<OpenReturnCase | null>(null); const [busy, setBusy] = useState(false);
+  const [viewingCertificate, setViewingCertificate] = useState<{ assignmentId: string; scope: CertificateScope; fundraiserId?: string } | null>(null);
   const [lostBook, setLostBook] = useState<OpenReturnCase | null>(null);
   const [lossReason, setLossReason] = useState(""); const [markingLost, setMarkingLost] = useState(false);
   const [lossError, setLossError] = useState<MessageKey | null>(null); const [lossNotice, setLossNotice] = useState(false);
@@ -43,13 +54,14 @@ export function ReturnsScreen({ account }: { account: Account }) {
     return tab === "OPEN" ? openReturnsResponseSchema.parse(payload) : returnsResponseSchema.parse(payload);
   }, [params, tab]);
   const queryKey = `${scope}${tab === "OPEN" ? "open:receipt-totals-v1" : "returned"}:${params}`;
-  const query = usePageQuery(queryKey, load, { enabled: !current && !lostBook, delay: search ? 300 : 0 });
+  const query = usePageQuery(queryKey, load, { enabled: !current && !lostBook && !viewingCertificate, delay: search ? 300 : 0 });
   const data = query.data; const rows = tab === "OPEN" ? data?.data as OpenReturnCase[] | undefined : undefined;
   const fundraiserTotals = new Map((data && "fundraiserTotals" in data.meta ? data.meta.fundraiserTotals : [])
     .map((totals) => [totals.collectorId, totals]));
   const groups = new Map<string, OpenReturnCase[]>();
   rows?.forEach((row) => groups.set(row.assignment.collectorId, [...(groups.get(row.assignment.collectorId) ?? []), row]));
   function saved(row: ReturnRow) {
+    cache.invalidate(`${account.id}:edition-summary:`);
     cache.invalidate(`${scope}open:`); cache.invalidate(`${scope}returned:`); cache.invalidate(`${account.id}:receipts:queue:query:`);
     setCurrent(null); router.push(`/receipt-entry/${row.id}`);
   }
@@ -70,6 +82,7 @@ export function ReturnsScreen({ account }: { account: Account }) {
         if (data.data.length === 1 && page > 1) setPage(page - 1);
       }
       cache.invalidate(`${account.id}:books:query:`); cache.invalidate(`${account.id}:assignments:query:`);
+      cache.invalidate(`${account.id}:edition-summary:`);
       cache.invalidate(`${account.id}:assignments:detail:${result.assignmentId}`); cache.invalidate(`${account.id}:leftovers:`);
       setLostBook(null); setLossReason(""); setLossNotice(true);
     } catch (error) { setLossError(booksError(error)); }
@@ -97,6 +110,7 @@ export function ReturnsScreen({ account }: { account: Account }) {
           <span><span className="block text-[10px] text-muted-foreground">{t("returnsTotal")}</span><strong className="mt-1 block text-sm tabular-nums text-primary">{displayMoney(totals?.collectedPaise ?? 0, language)}</strong></span>
           <span><span className="block text-[10px] text-muted-foreground">{t("returnsCommissionAmount")}</span><strong className="mt-1 block text-sm tabular-nums">{displayMoney(totals?.collectedCommissionPaise ?? 0, language)}</strong></span>
         </span><ChevronRight size={17} className="shrink-0" /></button>
+      <FundraiserCertificateAction rows={assigned} onView={(assignmentId, fundraiserId) => setViewingCertificate({ assignmentId, fundraiserId, scope: "FUNDRAISER" })} />
       <div className="overflow-x-auto"><table className="w-full text-start text-xs [&_th]:bg-muted/50 [&_th]:p-3 [&_th]:text-start [&_th]:font-medium [&_th]:text-muted-foreground [&_td]:border-t [&_td]:border-border [&_td]:p-3">
         <thead><tr><th>{t("booksNumber")}</th><th>{t("assignNumber")}</th><th className="whitespace-nowrap">{t("returnsTotal")}</th><th className="whitespace-nowrap">{t("returnsCommissionAmount")}</th><th>{t("status")}</th><th>{t("usersActions")}</th></tr></thead>
         <tbody>{assigned.map((row) => <tr key={row.id}><td><strong className="block whitespace-nowrap font-semibold" dir="ltr" title={row.sourceCode}>{submissionBookNumber(row)}</strong><span className="mt-1 block whitespace-nowrap text-[11px] text-muted-foreground">{t("booksReceiptRange")}: <bdi dir="ltr">{row.book.receiptFrom}–{row.book.receiptTo}</bdi></span></td>
@@ -112,12 +126,16 @@ export function ReturnsScreen({ account }: { account: Account }) {
           </div></td></tr>)}</tbody></table></div></Card>; })}</div>
     {tab === "RETURNED" && <div className="grid gap-3">{(data?.data as ReturnRow[] | undefined)?.map((row) => <Card key={row.id} className="flex flex-wrap items-center gap-4 p-4"><div className="min-w-40 flex-1"><strong className="block text-sm">{row.collectorName}</strong><span className="mt-1 block text-xs text-muted-foreground">{row.sourceCode} · {row.number} · {row.returnDate}</span></div>
       <strong className="text-primary">{displayMoney(row.totalPaise, language)}</strong><Badge tone={row.receiptEntryStatus === "FLAGGED" ? "danger" : row.receiptEntryStatus === "RECONCILED" ? "success" : "warning"}>{t(row.receiptEntryStatus === "FLAGGED" ? "booksFlagged" : row.receiptEntryStatus === "RECONCILED" ? "returnsReconciled" : "submissionInProgress")}</Badge>
+      <Button size="small" variant="outline" onClick={() => setViewingCertificate({ assignmentId: row.assignmentId, scope: "ASSIGNMENT" })}><Award size={15} aria-hidden="true" />{t("certificateView")}</Button>
       <Button asChild size="small" variant="outline"><Link href={`/receipt-entry/${row.id}`}>{t("submissionResume")}</Link></Button></Card>)}</div>}
     {data?.data.length === 0 && <Card className="p-10 text-center text-sm text-muted-foreground">{t("returnsEmptyOpen")}</Card>}
     {data && <div className="flex items-center justify-between py-5 text-xs"><span>{t("usersPage")} {data.meta.page}/{Math.max(1, Math.ceil(data.meta.total / data.meta.pageSize))} · {data.meta.total}</span><div className="flex gap-2">
       <Button size="small" variant="outline" disabled={query.loading || page <= 1} onClick={() => setPage(page - 1)}>{t("usersPrevious")}</Button><Button size="small" variant="outline" disabled={query.loading || page * data.meta.pageSize >= data.meta.total} onClick={() => setPage(page + 1)}>{t("usersNext")}</Button></div></div>}
     <Dialog open={current !== null} busy={busy} onOpenChange={(open) => { if (!open) setCurrent(null); }} title={t("submissionStart")} description={t("submissionDraftHelp")} className="w-[min(820px,calc(100vw-2rem))]">
       {current && <ReturnForm key={current.id} account={account} current={current} onBusyChange={setBusy} onSaved={saved} />}</Dialog>
+    <Dialog open={viewingCertificate !== null} onOpenChange={(open) => { if (!open) setViewingCertificate(null); }} title={t("certificateTitle")} description={t(viewingCertificate?.scope === "FUNDRAISER" ? "certificateFundraiserHelp" : "certificateHelp")} className="w-[min(900px,calc(100vw-2rem))]">
+      {viewingCertificate && <AuthorizationCertificateView key={`${viewingCertificate.scope}:${viewingCertificate.fundraiserId ?? viewingCertificate.assignmentId}`} accountId={account.id} {...viewingCertificate} />}
+    </Dialog>
     <Dialog open={lostBook !== null} busy={markingLost} onOpenChange={(open) => { if (!open) setLostBook(null); }} title={t("bookMarkLost")} description={t("bookLostHelp")}>
       {lostBook && <div className="space-y-4">
         <div className="rounded-xl bg-muted p-3 text-sm"><strong>{submissionBookNumber(lostBook)}</strong><p className="mt-1 text-xs text-muted-foreground">{lostBook.assignment.collectorName} · {lostBook.assignment.number} · {lostBook.book.receiptFrom}–{lostBook.book.receiptTo}</p></div>
