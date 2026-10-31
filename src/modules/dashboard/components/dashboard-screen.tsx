@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { useCallback, useEffect } from "react";
+import dynamic from "next/dynamic";
+import { useCallback, useEffect, useState } from "react";
 import { ArrowUpRight, BookOpen, CalendarDays, ChevronRight, ClipboardCheck, Clock3, Flag, RefreshCw, TriangleAlert, Users, Wallet } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { usePageDataCache, usePageQuery, usePageState } from "@/components/page-data-provider";
@@ -8,7 +9,6 @@ import { AppShell } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { DashboardCharts } from "@/modules/dashboard/components/dashboard-charts";
 import { dashboardResponseSchema } from "@/modules/dashboard/dashboard.schema";
 import { receiptRequest } from "@/modules/receipts/receipts.client";
 import { displayMoney } from "@/modules/books/returns.schema";
@@ -20,14 +20,24 @@ import type { Account } from "@/modules/auth/auth.types";
 function reconcile(previous: DashboardData | undefined, next: DashboardData) {
   return previous && JSON.stringify(previous) === JSON.stringify(next) ? previous : next;
 }
+const DashboardCharts = dynamic(() => import("@/modules/dashboard/components/dashboard-charts").then(module => module.DashboardCharts), {
+  ssr: false,
+  loading: () => <Card className="min-h-[350px] animate-pulse rounded-[18px] bg-muted/40 xl:col-span-12" />,
+});
 const paymentLabels = { CASH: "receiptCash", DIGITAL: "receiptDigital", CHEQUE: "receiptCheque" } as const;
-export function DashboardScreen({ account }: { account: Account }) {
+export function DashboardScreen({ account, initialData, initializing = false, initialError }: {
+  account: Account; initialData?: DashboardData; initializing?: boolean; initialError?: string;
+}) {
   const { t, language } = useLanguage(); const cache = usePageDataCache(); const scope = `${account.id}:dashboard:`;
   const [period, setPeriod] = usePageState<DashboardPeriod>(`${scope}live:period`, "allTime");
   const [interval, setInterval] = usePageState<ChartInterval>(`${scope}live:interval`, "yearly");
   const day = indiaToday(); const params = new URLSearchParams({ period, interval }).toString();
+  const [bootstrapError, setBootstrapError] = useState(initialError ?? "");
   const load = useCallback(async () => dashboardResponseSchema.parse(await receiptRequest(`/api/v1/dashboard?${params}`)).data, [params]);
-  const query = usePageQuery(`${scope}query:v1:${day}:${params}`, load, { reconcile });
+  const query = usePageQuery(`${scope}query:v1:${day}:${params}`, load, {
+    reconcile, enabled: !initializing && !bootstrapError,
+    initialData: period === "allTime" && interval === "yearly" ? initialData : undefined,
+  });
   const savedKey = `${scope}snapshot:${day}:${period}`;
   const data = query.data ?? cache.read<DashboardData | undefined>(savedKey, undefined);
   const current = query.data ?? cache.read<DashboardData | undefined>(`${scope}current:${day}`, undefined);
@@ -35,10 +45,11 @@ export function DashboardScreen({ account }: { account: Account }) {
     if (!query.data) return;
     cache.write(savedKey, query.data); cache.write(`${scope}current:${day}`, query.data);
   }, [cache, savedKey, scope, day, query.data]);
-  const loading = !data && (query.loading || query.stale); const moduleLoading = !current && (query.loading || query.stale);
+  const loading = !data && !bootstrapError && (initializing || query.loading || query.stale);
+  const moduleLoading = !current && !bootstrapError && (initializing || query.loading || query.stale);
   const money = (value?: number) => value === undefined ? "—" : displayMoney(value, language);
   const number = (value?: number | null) => value == null ? "—" : new Intl.NumberFormat(language === "ur" ? "ur-IN" : "en-IN").format(value);
-  const errorCode = query.error instanceof Error ? query.error.message : "";
+  const errorCode = bootstrapError || (query.error instanceof Error ? query.error.message : "");
   const c = data?.collection; const books = current?.books; const people = current?.people; const workflow = current?.workflow;
   const stats = [
     { label: "dashboardCollected", value: money(c?.collectedPaise), icon: Wallet, href: "/donors", primary: true, caption: `${t("booksRegular")} ${money(c?.regularPaise)} · ${t("booksToken")} ${money(c?.tokenPaise)}` },
@@ -66,16 +77,16 @@ export function DashboardScreen({ account }: { account: Account }) {
     { label: "dashboardReceiptRequests", value: workflow?.pendingEdits, href: "/approvals", icon: ClipboardCheck },
     { label: "dashboardProfileRequests", value: workflow?.pendingProfiles, href: "/people", icon: Users },
   ] satisfies { label: MessageKey; value?: number; href: string; icon: typeof BookOpen }[];
-  return <AppShell account={account} sampleData={false} headerTitle="dashboard" search="" onSearchChange={() => {}}>
+  return <AppShell account={account} sampleData={false} headerTitle="dashboard" search="" onSearchChange={() => {}} deferNotifications={initializing}>
     <div className="mb-5 flex flex-wrap items-center justify-between gap-4"><div><h1 className="text-[30px] font-bold tracking-tight">{t("dashboard")}</h1><p className="mt-2 text-sm text-muted-foreground">{t("dashboardOverview")}</p></div>
       <div className="flex flex-wrap items-center gap-2"><label className="flex min-h-10 items-center gap-2 rounded-full border border-border bg-card px-3 text-xs"><CalendarDays size={16} aria-hidden="true" /><select aria-label={t("date")} className="border-0 bg-transparent py-2 outline-none" value={period} onChange={(event) => {
         const value = event.target.value; if (value === "allTime" || value === "thisYear" || value === "thisMonth" || value === "lastMonth") setPeriod(value);
       }}><option value="allTime">{t("dashboardAllTime")}</option><option value="thisYear">{t("dashboardThisYear")}</option><option value="thisMonth">{t("thisMonth")}</option><option value="lastMonth">{t("lastMonth")}</option></select></label>
-        <Button variant="outline" size="icon" className="rounded-full" aria-label={t("usersRefresh")} loading={query.loading} onClick={() => cache.invalidate(`${scope}query:`)}><RefreshCw size={17} /></Button>
+        <Button variant="outline" size="icon" className="rounded-full" aria-label={t("usersRefresh")} loading={query.loading} disabled={initializing} onClick={() => { setBootstrapError(""); cache.invalidate(`${scope}query:`); }}><RefreshCw size={17} /></Button>
         <Button asChild size="small" className="min-h-10 rounded-full px-4"><Link href="/books/returns"><ClipboardCheck size={16} />{t("returnsScreen")}</Link></Button>
       </div>
     </div>
-    {query.error != null && <p className="mb-4 rounded-xl bg-[var(--danger-soft)] px-4 py-3 text-sm text-[var(--danger)]" role="alert">{t(errorCode === "SESSION_EXPIRED" ? "authExpired" : errorCode === "ACCESS_DENIED" ? "authDenied" : "dashboardFailed")}</p>}
+    {(query.error != null || bootstrapError) && <p className="mb-4 rounded-xl bg-[var(--danger-soft)] px-4 py-3 text-sm text-[var(--danger)]" role="alert">{t(errorCode === "SESSION_EXPIRED" ? "authExpired" : errorCode === "ACCESS_DENIED" ? "authDenied" : "dashboardFailed")}</p>}
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4" aria-busy={loading || undefined}>{stats.map((stat) => <Card key={stat.label} className={`flex min-h-[150px] min-w-0 flex-col rounded-[18px] p-4 ${stat.primary ? "border-emerald-700 bg-gradient-to-br from-emerald-800 to-emerald-600 text-white shadow-sm" : "bg-card"}`}>
       <div className="flex items-start justify-between gap-2"><span className="text-xs font-medium">{t(stat.label)}</span><Link href={stat.href} aria-label={t(stat.label)} className={`flex size-7 shrink-0 items-center justify-center rounded-full border transition-colors ${stat.primary ? "border-white/30 bg-white text-primary" : "border-border hover:bg-muted"}`}><ArrowUpRight size={15} /></Link></div>
       {loading ? <div className="mt-4 h-8 w-3/4 animate-pulse rounded-lg bg-current/10" /> : <strong className="mt-4 block break-words text-[27px] font-semibold leading-tight tracking-tight tabular-nums" dir="ltr">{stat.value}</strong>}
@@ -84,7 +95,8 @@ export function DashboardScreen({ account }: { account: Account }) {
     <div className="my-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground"><span>{t("dashboardFinancialScope")}{data && <> · <bdi>{data.from} — {data.to}</bdi></>}</span><span>{t("dashboardIndiaDates")}</span></div>
     {c?.commissionAllocated && <p className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900">{t("dashboardCommissionAllocation")}</p>}
     <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-12">
-      <DashboardCharts data={data} trend={query.data?.trend} interval={interval} onInterval={setInterval} loading={loading} trendLoading={!query.data && (query.loading || query.stale)} />
+      {initializing ? <Card className="min-h-[350px] animate-pulse rounded-[18px] bg-muted/40 xl:col-span-12" />
+        : <DashboardCharts data={data} trend={query.data?.trend} interval={interval} onInterval={setInterval} loading={loading} trendLoading={!query.data && (query.loading || query.stale)} />}
       <Card className="min-w-0 rounded-[18px] p-5 xl:col-span-7"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="flex items-center gap-2 text-sm font-semibold"><BookOpen size={18} className="text-primary" />{t("dashboardModules")}</h2><span className="text-[11px] text-muted-foreground">{t("dashboardBooksTotal")}: <b className="text-foreground">{number(books?.total)}</b></span></div>
         <p className="mt-2 text-[11px] text-muted-foreground">{t("dashboardCurrentScope")}{current && <> · <bdi>{current.asOf}</bdi></>}</p>
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4" aria-busy={moduleLoading || undefined}>{inventory.map((item) => <Link key={item.label} href={item.href} className="rounded-xl border border-border bg-muted/30 px-3 py-4 transition-colors hover:border-primary/30 hover:bg-accent/40"><span className="block text-[10px] text-muted-foreground">{t(item.label)}</span>{moduleLoading ? <span className="mt-2 block h-7 w-12 animate-pulse rounded bg-muted" /> : <strong className="mt-2 block text-2xl font-semibold tabular-nums">{number(item.value)}</strong>}</Link>)}</div>

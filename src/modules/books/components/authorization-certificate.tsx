@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowRight, CalendarDays, Circle, Printer, RefreshCw } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
@@ -13,14 +13,37 @@ import type { AuthorizationCertificate, CertificateScope } from "@/modules/books
 import type { ReactNode } from "react";
 
 const terms = [
-  ["Donations shall be collected only through official receipts.", "چندہ صرف ادارہ کی جاری کردہ رسید کے ذریعے وصول کیا جائے گا۔"],
-  ["This authorization is personal and non-transferable.", "یہ سند شخصی، عارضی اور ناقابل انتقال ہے۔"],
-  ["All collected funds and receipts are held in trust for the Institution.", "تمام وصول شدہ رقوم اور رسیدات ادارہ کی امانت ہیں۔"],
-  ["Unauthorized use is prohibited.", "ادارہ کے نام، مہر یا رسید کا غیر مجاز استعمال ممنوع ہے۔"],
-  ["Authorization may be revoked for misconduct.", "بے ضابطگی یا خیانت کی صورت میں سند فوراً منسوخ کی جا سکتی ہے۔"],
-  ["Bearer shall comply with By-laws and applicable laws of India.", "حامل سند ادارہ کے بائی لاز اور قابل اطلاق قوانین ہند کا پابند ہوگا۔"],
-  ["This certificate remains the property of the Institution.", "یہ سند ادارہ کی ملکیت ہے اور کسی بھی وقت واپس لی جا سکتی ہے۔"],
+  ["Donations shall be collected only through official serial-numbered receipts.", "چنده صرف اداره كى مجاز اور نمبر وار رسيد ك ذريع وصول كيا جائ\nگا۔"],
+  ["This authorization is personal, temporary, and non-transferable.", "يه سند شخصى، عارضى اور ناقابلٍ انتقال ب-"],
+  ["All collected funds and receipts are held in trust for the Institution and must be\nsubmitted within the prescribed period.", "وصول شدہ رقوم اور رسیدات ادارہ کی امانت ہیں اور مقررہ مدت میں\nجمع کرانا لازم ہوگا۔"],
+  ["Unauthorized use of the Institution's name, seal, receipts, or this certificate is\nprohibited.", "اداره ك نام، مهر، رسيد يا اس سند كا غير مجاز استعمال ممنوع ب-"],
+  ["Any financial irregularity, misrepresentation, or breach of trust may result in\nimmediate cancellation and legal action.", "مالى ب ضابطكى، غلط بيانى يا خيانت امانت كى صورت میں يه سند فوری\nطور پر منسوخ کی جا سکتی بے اور قانونی کارروائی کی جاسکتی ب۔"],
+  ["The bearer shall comply with the Institution's By-Laws and applicable laws of India.", "حاملِ سند ادارہ کے بائی لاز اور قابلِ اطلاق قوانینِ بند کا پابند ہوگا۔"],
+  ["Donors may verify this authorization directly with the Institution.", "عطیہ دہندگان اس سند کی تصدیق دفتر ادارہ سے کر سكت بيں-"],
 ] as const;
+
+const importantNote = {
+  en: "This certificate remains the property of the Institution and may be suspended, revoked, or\nrecalled at any time by the Institution.",
+  ur: "يه سند اداره كى ملكيت بے- اداره كسى بهى وقت اس سند كو منسوخ،\nمعطل يا واپس لين كا حق محفوظ ركهتا ب-",
+} as const;
+
+function OrnamentalFrame({ horizontal = false, bandHeight = 44, className }: { horizontal?: boolean; bandHeight?: number; className: string }) {
+  const patternId = `certificate-engraved-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  return <svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" className={`pointer-events-none select-none ${className}`}>
+    <defs><pattern id={patternId} width={horizontal ? 96 : 24} height={horizontal ? bandHeight : 96} patternUnits="userSpaceOnUse">
+      <g transform={horizontal ? `translate(0 ${bandHeight}) scale(1 ${bandHeight / 24}) rotate(-90)` : undefined} strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" width="18" height="96" fill="#f2efe3" fillOpacity="0.35" />
+        <path d="M1.5 0V96M3 0V96M21 0V96M22.5 0V96" fill="none" stroke="#203a62" strokeWidth="0.45" opacity="0.8" />
+        <path d="M5 -12L19 0L5 12L19 24L5 36L19 48L5 60L19 72L5 84L19 96L5 108" fill="none" stroke="#203a62" strokeWidth="0.7" />
+        <path d="M19 -12L5 0L19 12L5 24L19 36L5 48L19 60L5 72L19 84L5 96L19 108" fill="none" stroke="#21852b" strokeWidth="0.7" />
+        <path d="M12 -24C0 -18 0 -6 12 0S24 18 12 24S0 42 12 48S24 66 12 72S0 90 12 96S24 114 12 120" fill="none" stroke="#203a62" strokeWidth="0.45" opacity="0.8" />
+        <path d="M12 -24C24 -18 24 -6 12 0S0 18 12 24S24 42 12 48S0 66 12 72S24 90 12 96S0 114 12 120" fill="none" stroke="#21852b" strokeWidth="0.45" opacity="0.8" />
+        {[0, 24, 48, 72, 96].map(y => <path key={y} d={`M12 ${y - 4}L15 ${y}L12 ${y + 4}L9 ${y}Z`} fill="none" stroke="#203a62" strokeWidth="0.45" />)}
+      </g>
+    </pattern></defs>
+    <rect width="100%" height="100%" fill={`url(#${patternId})`} />
+  </svg>;
+}
 
 export function AuthorizationCertificateView({ accountId, assignmentId, scope = "ASSIGNMENT", fundraiserId }: {
   accountId: string; assignmentId: string; scope?: CertificateScope; fundraiserId?: string;
@@ -126,10 +149,13 @@ function Certificate({ data }: { data: AuthorizationCertificate }) {
   const date = (value: string) => new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
   const variedValidity = data.scope === "FUNDRAISER" && data.books.some((book) => book.validFrom !== data.validFrom || book.validUntil !== data.validUntil);
   return <article dir="ltr" lang="en" className="relative isolate mx-auto w-full max-w-[760px] overflow-hidden border-t border-[#b49a61] bg-white font-sans text-[#173e30] [print-color-adjust:exact] [-webkit-print-color-adjust:exact]">
+    <OrnamentalFrame className="absolute bottom-0 left-0 top-11 h-[calc(100%_-_44px)] w-6" />
+    <OrnamentalFrame className="absolute bottom-0 right-0 top-11 h-[calc(100%_-_44px)] w-6 -scale-x-100" />
     <div aria-hidden="true" className="pointer-events-none absolute top-[53%] left-1/2 -z-10 w-[87%] -translate-x-1/2 -translate-y-1/2 select-none opacity-[0.045] mix-blend-multiply">
       <img src="/images/authorization-certificate-logo.png" alt="" width={1600} height={1600} loading="eager" className="h-auto w-full object-contain" />
     </div>
-    <header className="grid min-h-11 grid-cols-[1fr_auto_1fr] items-center gap-3 bg-[#193f30] px-5 py-1 text-white">
+    <header className="relative isolate grid min-h-11 grid-cols-[1fr_auto_1fr] items-center gap-3 overflow-hidden bg-[#193f30] px-5 py-1 text-white">
+      <OrnamentalFrame horizontal className="absolute inset-0 -z-10 h-full w-full opacity-45" />
       <div className="min-w-0"><p className="text-[7px] tracking-[0.16em] text-[#d6c58e]">CERTIFICATE NO. · <span lang="ur" dir="rtl" className="tracking-normal">سند نمبر</span></p><strong className="block text-[11px] font-semibold tracking-[0.05em]">{data.number}</strong></div>
       <p lang="ur" dir="rtl" className="font-[family-name:var(--font-urdu)] text-[15px] leading-[2] text-[#d6c58e]">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ</p>
       <span className={`flex w-fit items-center justify-self-end gap-1.5 rounded-full px-3 py-1 text-[9px] ${status === "ACTIVE" ? "bg-[#edf6ee] text-[#246245]" : "bg-[#fff0ee] text-[#9e2424]"}`}><Circle size={6} fill="currentColor" aria-hidden="true" />{states[status][0]} <span lang="ur" dir="rtl" className="font-[family-name:var(--font-urdu)] text-[7px]">{states[status][1]}</span></span>
@@ -156,10 +182,15 @@ function Certificate({ data }: { data: AuthorizationCertificate }) {
           : <span className="flex items-center gap-4 whitespace-nowrap font-semibold tabular-nums"><time dateTime={data.validFrom}>{date(data.validFrom)}</time><ArrowRight size={24} strokeWidth={1} className="text-[#b69a57]" aria-hidden="true" /><time dateTime={data.validUntil}>{date(data.validUntil)}</time></span>}
       </section>
       <section className="mt-2 px-2">
-        <h4 className="mb-1 flex items-center justify-between px-1 text-[8px] font-semibold tracking-[0.18em] text-[#9b7638]"><span>TERMS &amp; CONDITIONS</span><span lang="ur" dir="rtl" className="font-[family-name:var(--font-urdu)] tracking-normal">شرائط و ضوابط</span></h4>
-        <table className="w-full border-collapse border border-[#ccb779] text-black [&_td]:border-b [&_td]:border-[#d6c594] [&_td]:px-1.5 [&_td]:py-[2px] [&_td]:align-middle"><tbody>{terms.map(([en, ur], i) => <tr key={en}>
-          <td className="w-5 text-center text-[7px] text-[#9b7638]">{i + 1}.</td><td className="w-[49%] text-[8px] leading-[1.35]">{en}</td><td lang="ur" dir="rtl" className="font-[family-name:var(--font-urdu)] text-[8px] leading-[1.9]">{ur}</td>
+        <h4 className="mb-1 flex items-center justify-between px-1 text-[8px] font-semibold text-[#9b7638]"><span>Terms &amp; Conditions</span><span lang="ur" dir="rtl" className="font-[family-name:var(--font-urdu)]">شرائط و ضوابط</span></h4>
+        <table className="w-full table-fixed border-collapse border border-[#ccb779] text-black [&_td]:border-b [&_td]:border-[#d6c594] [&_td]:px-1.5 [&_td]:py-1 [&_td]:align-top"><colgroup><col className="w-1/2" /><col className="w-1/2" /></colgroup><tbody>{terms.map(([en, ur]) => <tr key={en}>
+          <td lang="en" dir="ltr" className="text-left text-[8px] leading-[1.5]"><div className="flex items-start gap-1"><span aria-hidden="true" className="shrink-0 text-[#9b7638]">.</span><span className="min-w-0 whitespace-pre-line">{en}</span></div></td>
+          <td lang="ur" dir="rtl" className="text-right font-[family-name:var(--font-urdu)] text-[8px] leading-[2.2]"><div className="flex items-start gap-1"><span aria-hidden="true" className="shrink-0 text-[#9b7638]">•</span><span className="min-w-0 whitespace-pre-line">{ur}</span></div></td>
         </tr>)}</tbody></table>
+        <div className="mt-2 grid grid-cols-2 gap-3 rounded-lg border border-[#ccb779] bg-[#fbf9f1]/80 px-2 py-2 text-black">
+          <div lang="en" dir="ltr" className="text-left"><h5 className="mb-1 text-[8px] font-semibold tracking-[0.12em] text-[#9b7638]">IMPORTANT</h5><p className="whitespace-pre-line text-[8px] leading-[1.5]">{importantNote.en}</p></div>
+          <div lang="ur" dir="rtl" className="text-right font-[family-name:var(--font-urdu)]"><h5 className="mb-1 text-[8px] font-semibold leading-[2] text-[#9b7638]">ابم نوث</h5><p className="whitespace-pre-line text-[8px] leading-[2.2]">{importantNote.ur}</p></div>
+        </div>
       </section>
       <div className="mt-3 grid grid-cols-2 gap-7 px-2">
         <section className="min-w-0">
@@ -183,5 +214,6 @@ function Certificate({ data }: { data: AuthorizationCertificate }) {
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-[7px] tracking-[0.07em]"><span className="break-words">{data.assignmentNumber}</span><p className="text-center text-[9px] leading-snug tracking-[0.13em] text-[#7c8c7e]">RASULPUR, JAGATSINGHPUR, ODISHA, INDIA<br />CONTACT / WHATSAPP: +91 97777 88 666</p><span className="text-end break-words">{data.number}</span></div>
       </footer>
     </div>
+    <OrnamentalFrame horizontal bandHeight={24} className="block h-6 w-full" />
   </article>;
 }

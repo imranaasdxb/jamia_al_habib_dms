@@ -5,12 +5,15 @@ import { withBooksDatabase } from "@/modules/books/books.repository";
 import { dashboardSchema } from "@/modules/dashboard/dashboard.schema";
 import type { DashboardQuery } from "@/modules/dashboard/dashboard.schema";
 
-export async function readDashboard(query: DashboardQuery) {
+export async function readDashboard(query: DashboardQuery, onTiming?: (name: string, milliseconds: number) => void) {
+  const startedAt = performance.now();
   return withBooksDatabase(async (tx, actor) => {
+    onTiming?.("dashboard_auth_context", performance.now() - startedAt);
     if (actor.role !== "SUPER_ADMIN" && actor.role !== "ADMIN") throw new AuthFailure("ACCESS_DENIED");
     const unit = query.interval === "yearly" ? "year" : query.interval === "weekly" ? "week" : "month";
     const step = `1 ${unit}`;
     const lookback = `${query.interval === "yearly" ? 23 : 11} ${unit}s`;
+    const queryStartedAt = performance.now();
     const [result] = await tx.execute<{ data: unknown }>(sql`
       with access as (
         select ${actor.role === "SUPER_ADMIN"} or not exists (
@@ -144,6 +147,7 @@ export async function readDashboard(query: DashboardQuery) {
       ) else null end as data
       from bounds cross join financial cross join commission_totals cross join inventory cross join current_cases
         cross join leftovers cross join fundraiser_counts cross join admin_counts`);
+    onTiming?.("dashboard_sql", performance.now() - queryStartedAt);
     if (!result?.data) throw new AuthFailure("ACCESS_DENIED");
     return dashboardSchema.parse(result.data);
   });

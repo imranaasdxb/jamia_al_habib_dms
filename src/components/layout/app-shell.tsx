@@ -4,16 +4,15 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import {
-  ArrowLeft, Bell, BookOpen, ChevronDown, ClipboardCheck, Flag, HandCoins,
-  House, Search, Settings, Users, UserRound, ChartNoAxesCombined, PanelLeftClose, PanelLeftOpen,
+  ArrowLeft, BookOpen, ChevronDown, ClipboardCheck, Flag, HandCoins,
+  House, Settings, Users, UserRound, ChartNoAxesCombined, PanelLeftClose, PanelLeftOpen,
 } from "lucide-react";
 import { LanguageSwitch, useLanguage } from "@/components/language-provider";
 import { usePageState } from "@/components/page-data-provider";
 import { Brand } from "@/components/layout/brand";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { GlobalSearch, HeaderNotifications } from "@/modules/navigation/components/header-tools";
 import { LogoutButton } from "@/modules/auth/components/logout-button";
 import type { ReactNode } from "react";
 import type { MessageKey } from "@/lib/i18n/messages";
@@ -40,10 +39,10 @@ interface AppShellProps {
   searchLabel?: MessageKey;
   sampleData?: boolean;
   headerTitle?: MessageKey;
+  deferNotifications?: boolean;
 }
 
-export function AppShell({ children, search = "", onSearchChange = () => {}, account,
-  searchLabel = "searchPlaceholder", sampleData = true, headerTitle }: AppShellProps) {
+export function AppShell({ children, account, sampleData = true, deferNotifications = false }: AppShellProps) {
   const { t, setLanguage } = useLanguage();
   const pathname = usePathname();
   const router = useRouter();
@@ -57,7 +56,7 @@ export function AppShell({ children, search = "", onSearchChange = () => {}, acc
   const booksActive = pathname === "/books" || pathname.startsWith("/books/") || pathname.startsWith("/receipt-entry");
   const [booksExpanded, setBooksExpanded] = usePageState(`${account.id}:navigation:books`, booksActive);
   const booksSubmenuId = useId();
-  const [activeDialog, setActiveDialog] = useState<MessageKey | null>(null);
+  const [activeDialog, setActiveDialog] = useState<"account" | null>(null);
   const isAccountDialog = activeDialog === "account";
   const accountCardId = useId();
   const accountCardRef = useRef<HTMLDivElement>(null);
@@ -150,27 +149,10 @@ export function AppShell({ children, search = "", onSearchChange = () => {}, acc
 
       <div className="sticky top-0 z-30 -mt-3 me-3 ms-[calc(var(--sidebar-width)_+_24px)] bg-muted/75 py-3 backdrop-blur-xl backdrop-saturate-150 transition-[margin-inline-start] duration-200 motion-reduce:transition-none">
       <header className={"topbar flex h-16 items-center justify-between gap-4 rounded-[18px] border border-primary/10 bg-[var(--primary-soft)] px-4 shadow-[0_4px_20px_rgb(16_27_46/5%)]"}>
-        {headerTitle ? <span className={"topbar-title rounded-full bg-white px-4 py-2 text-sm font-medium text-muted-foreground"}>{t(headerTitle)}</span> : <div className={"search-box relative w-[min(48%,_440px)] [&_>_svg]:pointer-events-none [&_>_svg]:absolute [&_>_svg]:start-3 [&_>_svg]:top-2.5 [&_>_svg]:text-primary [&_.input]:min-h-9 [&_.input]:rounded-full [&_.input]:border-transparent [&_.input]:bg-white [&_.input]:py-2 [&_.input]:ps-10 [&_.input]:text-xs"}>
-          <Search size={18} aria-hidden="true" />
-          <Input
-            type="search"
-            aria-label={t(searchLabel === "searchPlaceholder" ? "search" : searchLabel)}
-            placeholder={t(searchLabel)}
-            value={search}
-            onChange={(event) => onSearchChange(event.target.value)}
-          />
-        </div>}
+        <GlobalSearch account={account} />
         <div className={"topbar-actions flex items-center gap-3 [&_.language-switch]:rounded-full [&_.language-switch]:bg-white [&_.language-switch]:border-transparent [&_.language-switch]:p-0.5 [&_.language-switch_button]:min-w-10 [&_.language-switch_button]:rounded-full [&_.language-switch_button]:px-2.5 [&_.language-switch_button]:py-1.5 [&_.language-switch_button]:text-[11px]"}>
           <LanguageSwitch />
-          <Button
-            variant="ghost"
-            size="icon"
-            className={"notification-button relative min-h-9 size-9 rounded-full bg-white text-primary hover:bg-white/80"}
-            aria-label={t("notifications")}
-            onClick={() => setActiveDialog("notifications")}
-          >
-            <Bell size={19} aria-hidden="true" /><span className={"notification-dot absolute top-[8px] end-[9px] w-[7px] h-[7px] bg-[var(--primary)] [border:2px_solid_var(--card)] rounded-[50%]"} />
-          </Button>
+          <HeaderNotifications account={account} defer={deferNotifications} />
           <div className="relative" ref={accountCardRef}>
           <button ref={profileButtonRef} type="button" className={"profile-button flex items-center gap-2.5 rounded-full border-0 bg-white p-1 pe-3 text-start transition-colors hover:bg-white/80 [&_>_svg]:text-primary"} aria-label={t("profile")}
             aria-expanded={isAccountDialog} aria-controls={accountCardId} aria-haspopup="dialog"
@@ -212,12 +194,6 @@ export function AppShell({ children, search = "", onSearchChange = () => {}, acc
         {children}
       </main>
 
-      <Dialog
-        open={activeDialog !== null && !isAccountDialog}
-        onOpenChange={(open) => { if (!open) setActiveDialog(null); }}
-        title={activeDialog ? t(activeDialog) : ""}
-        description={t("moduleLater")}
-      />
     </div>
   );
 }

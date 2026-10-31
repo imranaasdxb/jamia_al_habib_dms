@@ -34,9 +34,17 @@ export async function submitAuthForm(
     return result.error ? { error: result.error } : { redirectTo: "/verify-email/signup" };
   }
   if (screen === "login") {
-    const result = await authClient.signIn.email({ email: values.email, password: values.password });
-    if (result.error?.code === "EMAIL_NOT_VERIFIED") return { redirectTo: "/verify-email/signup" };
-    return result.error ? { error: result.error } : { redirectTo: "/dashboard" };
+    // The same protected proxy sets both provider and application cookies. Login
+    // does not need the SDK's client-session refresh before navigating.
+    const response = await fetch("/api/auth/sign-in/email", {
+      method: "POST", credentials: "same-origin", cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: values.email, password: values.password }),
+    });
+    const payload: unknown = await response.json();
+    const failure = errorSchema.safeParse(payload);
+    if (!response.ok && failure.success && failure.data.code === "EMAIL_NOT_VERIFIED") return { redirectTo: "/verify-email/signup" };
+    return response.ok ? { redirectTo: "/dashboard" } : { error: payload };
   }
   if (screen === "forgot") {
     const result = await authClient.emailOtp.sendVerificationOtp({

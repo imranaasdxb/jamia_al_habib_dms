@@ -111,30 +111,36 @@ export async function createAppSession(identity: AuthIdentity): Promise<string> 
     if (!person) throw new AuthFailure("ACCESS_DENIED");
     accountFromPerson(person);
     const token = randomBytes(32).toString("base64url");
-    await transaction.insert(appSessions).values({ personId: person.id, tokenHash: hashAuthValue(token),
-      expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000), createdBy: person.id });
-    await transaction.insert(activityLog).values({ actorId: person.id, action: "LOGIN",
-      resource: "authentication", recordId: person.id, createdBy: person.id });
+    await transaction.execute(sql`with created_session as (
+      insert into public.app_sessions(person_id, token_hash, expires_at, created_by)
+      values (${person.id}::uuid, ${hashAuthValue(token)}, now() + interval '12 hours', ${person.id}::uuid)
+      returning person_id
+    ) insert into public.activity_log(actor_id, action, resource, record_id, created_by)
+      select person_id, 'LOGIN', 'authentication', person_id::text, person_id from created_session`);
     return token;
   });
 }
 
-export async function findActiveAccount(
+export async function findActiveAccountContext(
   identity: AuthIdentity, token: string,
-): Promise<Account | null> {
+): Promise<{ account: Account; dashboardAllowed: boolean } | null> {
   if (!identity.emailVerified) return null;
   return withRequestDatabase({ email: identity.email, authUserId: identity.id }, async (transaction) => {
     const person = await findPerson(transaction, identity, false);
     if (!person) return null;
     const account = accountFromPerson(person);
-    const sessionQuery = transaction.select().from(appSessions).where(and(
+    const sessionQuery = transaction.select({
+      dashboardAllowed: sql<boolean>`${person.role === "SUPER_ADMIN"} or not exists (
+        select 1 from public.user_permissions where person_id = ${person.id}::uuid
+          and permission = 'dashboard.read' and not allowed and deleted_at is null
+      )`,
+    }).from(appSessions).where(and(
       eq(appSessions.personId, person.id), eq(appSessions.tokenHash, hashAuthValue(token)),
       isNull(appSessions.revokedAt), isNull(appSessions.deletedAt),
+      sql`${appSessions.expiresAt} > now()`,
     )).limit(1);
     const [session] = await sessionQuery;
-    const now = Date.now();
-    if (!session || session.expiresAt.getTime() <= now) return null;
-    return account;
+    return session ? { account, dashboardAllowed: session.dashboardAllowed } : null;
   });
 }
 

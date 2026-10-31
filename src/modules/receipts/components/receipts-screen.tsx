@@ -101,6 +101,17 @@ export function ReceiptBookScreen({ account, returnId }: { account: Account; ret
     if (dirty && !discard) { setLeaving(number); return; }
     setDirty(false); setSelected(number); setLeaving(null); setJump("");
   }
+  useEffect(() => {
+    const openReceipt = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      const target: unknown = event.detail;
+      if (typeof target === "object" && target !== null && "returnId" in target && target.returnId === returnId
+        && "number" in target && typeof target.number === "number") navigate(target.number);
+    };
+    // Header search uses the same range checks and unsaved-change confirmation as Next/Previous.
+    window.addEventListener("dms:open-receipt", openReceipt);
+    return () => window.removeEventListener("dms:open-receipt", openReceipt);
+  }, [returnId, navigate]);
   async function finalize(action: "FINALIZE" | "REOPEN" = "FINALIZE") {
     if (!data || finalizing || busy || sending || dirty || (action === "REOPEN" && (account.role !== "SUPER_ADMIN" || reopenReason.trim().length < 3))) return;
     setFinalizing(true); setError(null);

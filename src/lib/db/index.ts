@@ -31,10 +31,10 @@ export async function withRequestDatabase<T>(
 ): Promise<T> {
   database ??= createDatabase();
   return database.transaction(async (transaction) => {
-    // The connection's owner privileges are dropped before any application query.
-    // SET LOCAL and the identity context expire together when the transaction ends.
-    await transaction.execute(sql`set local role dms_runtime`);
+    // Drop owner privileges and initialize RLS in one round trip. This statement
+    // reads no application tables; all settings expire with this transaction.
     await transaction.execute(sql`select
+      set_config('role', 'dms_runtime', true),
       set_config('row_security', 'on', true),
       set_config('statement_timeout', '10s', true),
       set_config('app.email', ${identity.email?.toLowerCase() ?? ""}, true),

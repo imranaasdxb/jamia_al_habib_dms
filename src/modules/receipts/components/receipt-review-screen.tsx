@@ -25,7 +25,7 @@ export function ReceiptReviewScreen({account,mode}:{account:Account;mode:"EDITS"
   const [kind,setKind]=usePageState<ReviewKind>(`${base}:kind`,kinds[0]);
   const initial={search:"",status:"ACTIVE",from:"",to:"",page:1};
   const [filter,setFilter]=usePageState(`${base}:filters`,initial);
-  const [draft,setDraft]=useState(filter); const [selected,setSelected]=useState<ReviewRow|null>(null);
+  const [draft,setDraft]=usePageState(`${base}:draft`,filter); const [selected,setSelected]=useState<ReviewRow|null>(null);
   const [notice,setNotice]=useState("");
   const params=new URLSearchParams({...filter,page:String(filter.page),kind}).toString();
   const key=`${account.id}:receipt-review:queue:${params}`;
