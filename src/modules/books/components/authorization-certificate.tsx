@@ -13,18 +13,18 @@ import type { AuthorizationCertificate, CertificateScope } from "@/modules/books
 import type { ReactNode } from "react";
 
 const terms = [
-  ["Donations shall be collected only through official serial-numbered receipts.", "چنده صرف اداره كى مجاز اور نمبر وار رسيد ك ذريع وصول كيا جائ\nگا۔"],
-  ["This authorization is personal, temporary, and non-transferable.", "يه سند شخصى، عارضى اور ناقابلٍ انتقال ب-"],
-  ["All collected funds and receipts are held in trust for the Institution and must be\nsubmitted within the prescribed period.", "وصول شدہ رقوم اور رسیدات ادارہ کی امانت ہیں اور مقررہ مدت میں\nجمع کرانا لازم ہوگا۔"],
-  ["Unauthorized use of the Institution's name, seal, receipts, or this certificate is\nprohibited.", "اداره ك نام، مهر، رسيد يا اس سند كا غير مجاز استعمال ممنوع ب-"],
-  ["Any financial irregularity, misrepresentation, or breach of trust may result in\nimmediate cancellation and legal action.", "مالى ب ضابطكى، غلط بيانى يا خيانت امانت كى صورت میں يه سند فوری\nطور پر منسوخ کی جا سکتی بے اور قانونی کارروائی کی جاسکتی ب۔"],
-  ["The bearer shall comply with the Institution's By-Laws and applicable laws of India.", "حاملِ سند ادارہ کے بائی لاز اور قابلِ اطلاق قوانینِ بند کا پابند ہوگا۔"],
-  ["Donors may verify this authorization directly with the Institution.", "عطیہ دہندگان اس سند کی تصدیق دفتر ادارہ سے کر سكت بيں-"],
+  ["Donations shall be collected only through official serial-numbered receipts.", "چندہ صرف ادارہ کی مجاز اور نمبر وار رسید کے ذریعے وصول کیا جائے گا۔"],
+  ["This authorization is personal, temporary, and non-transferable.", "یہ سند شخصی، عارضی اور ناقابلِ انتقال ہے۔"],
+  ["All collected funds and receipts are held in trust for the Institution and must be\nsubmitted within the prescribed period.", "وصول شدہ رقوم اور رسیدات ادارہ کی امانت ہیں اور مقررہ مدت میں جمع کرانا لازم ہوگا۔"],
+  ["Unauthorized use of the Institution's name, seal, receipts, or this certificate is\nprohibited.", "ادارہ کے نام، مہر، رسید یا اس سند کا غیر مجاز استعمال ممنوع ہے۔"],
+  ["Any financial irregularity, misrepresentation, or breach of trust may result in\nimmediate cancellation and legal action.", "مالی بے ضابطگی، غلط بیانی یا خیانتِ امانت کی صورت میں یہ سند فوری طور پر منسوخ کی جا سکتی ہے\n اور قانونی کارروائی کی جا سکتی ہے۔"],
+  ["The bearer shall comply with the Institution's By-Laws and applicable laws of India.", "حاملِ سند ادارہ کے بائی لاز اور قابلِ اطلاق قوانینِ ہند کا پابند ہوگا۔"],
+  ["Donors may verify this authorization directly with the Institution.", " عطیہ دہندگان اس سند کی تصدیق دفترِ ادارہ سے کر سکتے ہیں۔"],
 ] as const;
 
 const importantNote = {
-  en: "This certificate remains the property of the Institution and may be suspended, revoked, or\nrecalled at any time by the Institution.",
-  ur: "يه سند اداره كى ملكيت بے- اداره كسى بهى وقت اس سند كو منسوخ،\nمعطل يا واپس لين كا حق محفوظ ركهتا ب-",
+  en: "This certificate remains the property of the Institution and may be suspended, revoked, or recalled at any time by the Institution.",
+  ur: "یہ سند ادارہ کی ملکیت ہے۔ ادارہ کسی بھی وقت اس سند کو منسوخ،\nمعطل یا واپس لینے کا حق محفوظ رکھتا ہے۔"
 } as const;
 
 function OrnamentalFrame({ horizontal = false, bandHeight = 44, className }: { horizontal?: boolean; bandHeight?: number; className: string }) {
@@ -54,8 +54,23 @@ export function AuthorizationCertificateView({ accountId, assignmentId, scope = 
   const [printing, setPrinting] = useState(false);
   const fitPrint = useCallback(() => {
     const area = printArea.current; const content = printDocument.current;
-    if (!area || !content || !content.scrollHeight) return;
-    const scale = Math.min(1, (area.clientHeight - 2) / content.scrollHeight, (area.clientWidth - 2) / content.scrollWidth);
+    const certificate = content?.querySelector("article");
+    if (!area || !content || !certificate) return;
+    const width = area.clientWidth - 2; const height = area.clientHeight - 2;
+    if (width <= 0 || height <= 0) return;
+    content.style.transform = "none";
+    content.style.width = `${width}px`;
+    certificate.style.minHeight = "0";
+    let scale = 1;
+    // Reflow wide content before scaling so long book lists do not produce a
+    // narrow certificate centered inside the A4 page.
+    for (let pass = 0; pass < 6; pass += 1) {
+      if (content.scrollHeight * scale <= height) break;
+      scale = Math.min(scale, height / content.scrollHeight);
+      content.style.width = `${width / scale}px`;
+    }
+    certificate.style.minHeight = `${height / scale}px`;
+    content.style.transformOrigin = "top left";
     content.style.transform = `scale(${scale})`;
   }, []);
   useEffect(() => {
@@ -63,14 +78,19 @@ export function AuthorizationCertificateView({ accountId, assignmentId, scope = 
     return () => window.removeEventListener("beforeprint", fitPrint);
   }, [fitPrint]);
   async function printCertificate() {
-    if (printing) return;
+    if (printing || !query.data) return;
+    const previousTitle = document.title;
     setPrinting(true);
     try {
       await document.fonts.ready;
       await Promise.all(Array.from(printDocument.current?.querySelectorAll("img") ?? []).map((image) => image.decode().catch(() => undefined)));
       fitPrint();
+      document.title = `${query.data.collectorName.trim() || query.data.number} - Certificate`;
       window.print();
-    } finally { setPrinting(false); }
+    } finally {
+      document.title = previousTitle;
+      setPrinting(false);
+    }
   }
   const key = scope === "FUNDRAISER" ? `${accountId}:assignments:fundraiser-certificate:${fundraiserId ?? assignmentId}:v3`
     : `${accountId}:assignments:detail:${assignmentId}:certificate:assignment-v3`;
@@ -95,7 +115,7 @@ export function AuthorizationCertificateView({ accountId, assignmentId, scope = 
     {!pending && query.data && query.error == null && <>
       {query.data.historical && <p className="mb-3 rounded-xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">{t("certificateHistorical")}</p>}
       <Certificate data={query.data} />
-      {createPortal(<div id="authorization-certificate-print-root" aria-hidden="true" className="pointer-events-none invisible fixed -left-[10000px] top-0 box-border h-[297mm] w-[210mm] overflow-hidden bg-white p-[10mm] print:visible print:static print:m-0 print:break-inside-avoid print:rounded-none print:[body:has(>_&)_>_*:not(#authorization-certificate-print-root)]:hidden! print:[body:has(>_&)]:overflow-visible! print:[body:has(>_&)]:h-auto! print:[body:has(>_&)]:pointer-events-auto!">
+      {createPortal(<div id="authorization-certificate-print-root" aria-hidden="true" className="pointer-events-none invisible fixed -left-[10000px] top-0 box-border h-[296mm] w-[210mm] overflow-hidden bg-white p-[8mm] print:visible print:static print:m-0 print:break-inside-avoid print:rounded-none">
         {/* Page size and printer margins require @page; certificate styling stays in Tailwind. */}
         <style>{`@media print {
           @page { size: A4 portrait; margin: 0; }
@@ -105,41 +125,33 @@ export function AuthorizationCertificateView({ accountId, assignmentId, scope = 
             min-height: 0 !important; height: auto !important;
             width: 210mm !important; background: white !important;
           }
+          body:has(> #authorization-certificate-print-root) > :not(#authorization-certificate-print-root) {
+            display: none !important;
+          }
+          #authorization-certificate-print-root {
+            position: relative !important; inset: auto !important;
+            visibility: visible !important; pointer-events: auto !important;
+            margin: 0 !important; width: 210mm !important; height: 296mm !important;
+            padding: 8mm !important; box-sizing: border-box !important;
+            overflow: hidden !important; break-inside: avoid !important;
+          }
         }`}</style>
         <div ref={printArea} className="relative h-full w-full overflow-hidden">
-          <div ref={printDocument} className="absolute inset-x-0 top-0 origin-top"><Certificate data={query.data} /></div>
+          <div ref={printDocument} className="absolute left-0 top-0 w-full origin-top-left"><Certificate data={query.data} printLayout /></div>
         </div>
       </div>, document.body)}
     </>}
   </div>;
 }
 
-function Detail({ en, ur, children }: { en: string; ur: string; children: ReactNode }) {
-  return <div className="min-w-0 rounded-[14px] bg-[#f2efe3] px-3 py-2">
+function Detail({ en, ur, children, className = "" }: { en: string; ur: string; children: ReactNode; className?: string }) {
+  return <div className={`min-w-0 rounded-lg border border-[#cbbd8c]/45 bg-[#f2efe3]/75 px-2.5 py-1.5 ${className}`}>
     <dt className="flex items-center justify-between gap-2 text-[7px] tracking-[0.12em] text-[#657169]"><span>{en}</span><span lang="ur" dir="rtl" className="font-[family-name:var(--font-urdu)] text-[8px] leading-[2] tracking-normal">{ur}</span></dt>
-    <dd className="mx-auto mt-1 w-fit min-w-[50%] max-w-full border-b border-[#cbbd8c] px-1 text-center text-[12px] font-medium leading-snug break-words [overflow-wrap:anywhere]">{children}</dd>
+    <dd className="mt-0.5 text-center text-[11px] font-medium leading-[1.3] break-words [overflow-wrap:anywhere]">{children}</dd>
   </div>;
 }
 
-function editionSummaries(books: AuthorizationCertificate["books"]) {
-  const groups = new Map<string, [number, number][]>();
-  for (const book of books) {
-    const token = book.number.match(/-T-(\d+)-/)?.[1];
-    const label = `${book.editionName}${token ? ` · ₹${token}` : ""}`;
-    groups.set(label, [...(groups.get(label) ?? []), [book.receiptFrom, book.receiptTo]]);
-  }
-  return [...groups].map(([label, ranges]) => {
-    const merged: [number, number][] = [];
-    for (const [from, to] of ranges.sort((a, b) => a[0] - b[0])) {
-      const last = merged[merged.length - 1];
-      if (last && from <= last[1] + 1) last[1] = Math.max(last[1], to);
-      else merged.push([from, to]);
-    }
-    return { label, ranges: merged.map(([from, to]) => `${from}–${to}`).join(" · ") };
-  });
-}
-
-function Certificate({ data }: { data: AuthorizationCertificate }) {
+function Certificate({ data, printLayout = false }: { data: AuthorizationCertificate; printLayout?: boolean }) {
   const today = indiaToday();
   const status = data.status === "ACTIVE" && today > data.expiresOn ? "EXPIRED" : data.status;
   const states = {
@@ -148,7 +160,7 @@ function Certificate({ data }: { data: AuthorizationCertificate }) {
   } as const;
   const date = (value: string) => new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
   const variedValidity = data.scope === "FUNDRAISER" && data.books.some((book) => book.validFrom !== data.validFrom || book.validUntil !== data.validUntil);
-  return <article dir="ltr" lang="en" className="relative isolate mx-auto w-full max-w-[760px] overflow-hidden border-t border-[#b49a61] bg-white font-sans text-[#173e30] [print-color-adjust:exact] [-webkit-print-color-adjust:exact]">
+  return <article dir="ltr" lang="en" className={`relative isolate mx-auto w-full overflow-hidden border-t border-[#b49a61] bg-white font-sans text-[#173e30] [print-color-adjust:exact] [-webkit-print-color-adjust:exact] ${printLayout ? "flex max-w-none flex-col" : "max-w-[760px]"}`}>
     <OrnamentalFrame className="absolute bottom-0 left-0 top-11 h-[calc(100%_-_44px)] w-6" />
     <OrnamentalFrame className="absolute bottom-0 right-0 top-11 h-[calc(100%_-_44px)] w-6 -scale-x-100" />
     <div aria-hidden="true" className="pointer-events-none absolute top-[53%] left-1/2 -z-10 w-[87%] -translate-x-1/2 -translate-y-1/2 select-none opacity-[0.045] mix-blend-multiply">
@@ -157,26 +169,42 @@ function Certificate({ data }: { data: AuthorizationCertificate }) {
     <header className="relative isolate grid min-h-11 grid-cols-[1fr_auto_1fr] items-center gap-3 overflow-hidden bg-[#193f30] px-5 py-1 text-white">
       <OrnamentalFrame horizontal className="absolute inset-0 -z-10 h-full w-full opacity-45" />
       <div className="min-w-0"><p className="text-[7px] tracking-[0.16em] text-[#d6c58e]">CERTIFICATE NO. · <span lang="ur" dir="rtl" className="tracking-normal">سند نمبر</span></p><strong className="block text-[11px] font-semibold tracking-[0.05em]">{data.number}</strong></div>
-      <p lang="ur" dir="rtl" className="font-[family-name:var(--font-urdu)] text-[15px] leading-[2] text-[#d6c58e]">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ</p>
+      <div className="relative h-[34px] w-[140px] overflow-hidden mix-blend-screen">
+        <img src="/images/certificate-bismillah.png" alt="بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ" width={1080} height={1920} loading="eager"
+          className="absolute left-1/2 top-1/2 h-auto w-[140px] max-w-none -translate-x-1/2 -translate-y-1/2 [filter:invert(1)_sepia(1)_saturate(1.5)_brightness(0.85)]" />
+      </div>
       <span className={`flex w-fit items-center justify-self-end gap-1.5 rounded-full px-3 py-1 text-[9px] ${status === "ACTIVE" ? "bg-[#edf6ee] text-[#246245]" : "bg-[#fff0ee] text-[#9e2424]"}`}><Circle size={6} fill="currentColor" aria-hidden="true" />{states[status][0]} <span lang="ur" dir="rtl" className="font-[family-name:var(--font-urdu)] text-[7px]">{states[status][1]}</span></span>
     </header>
-    <div className="px-8 pb-3">
-      <div className="mx-auto pt-2"><div className="aspect-[4/1] w-full overflow-hidden"><img src="/images/certificate-brand-header.png" alt="Jamia Al-Habib · A Beautiful Blend of Religious and Contemporary Education & Training" width={2132} height={738} loading="eager" className="h-full w-full object-cover object-center" /></div></div>
+    <div className={`px-8 pb-2 ${printLayout ? "flex flex-1 flex-col" : ""}`}>
+      <div className="mx-auto grid grid-cols-[minmax(0,1fr)_176px_minmax(0,1fr)] items-center gap-x-3 gap-y-1 border-b border-[#cbbd8c] pb-3 pt-3">
+        <div lang="en" dir="ltr" className="min-w-0 text-center text-[#173c63]">
+          <p className="whitespace-nowrap text-[24px] font-extrabold leading-[1.1] tracking-[-0.04em]">JAMIA AL HABIB</p>
+          <p className="mt-1 text-[8px] font-medium leading-[1.4] tracking-[0.04em]">RASULPUR, JAGATSINGHPUR, ODISHA, INDIA</p>
+        </div>
+        <div className="mx-auto h-[140px] w-[122px] overflow-hidden"><img src="/images/authorization-certificate-logo.png" alt="Jamia Al Habib logo" width={1600} height={1600} loading="eager" className="h-full w-full scale-[1.33] object-cover object-center" /></div>
+        <div className="relative aspect-[17/10] w-full min-w-0 max-w-[190px] justify-self-end overflow-hidden">
+          <img src="/images/certificate-urdu-heading.png" alt="یادگار تاج الشریعہ علیہ الرحمہ — جامعۃ الحبیب — رسول پور، جگت سنگھ پور، اڈیشا، انڈیا"
+            width={2000} height={1412} loading="eager"
+            className="absolute left-1/2 top-1/2 h-auto w-[220%] max-w-none -translate-x-1/2 -translate-y-1/2" />
+        </div>
+        <p className="col-span-3 mt-1 text-center text-[10px] leading-[1.5] text-[#173c63]">A Beautiful Blend of Religious and Contemporary Education &amp; Training.</p>
+      </div>
       <section className="text-center">
         <h2 lang="ur" dir="rtl" className="font-[family-name:var(--font-urdu)] text-[29px] leading-[1.7] tracking-[0.12em] text-[#173c63]">سندِ اجازت</h2>
         <h3 className="font-serif text-[16px] tracking-[0.075em] text-[#9b8148]">CERTIFICATE OF AUTHORIZATION</h3>
-        <p className="mt-1 font-serif text-[15px] italic text-[#96998c]">This is to certify that</p>
-        <div className="mx-auto mt-1 w-[60%] border-b border-[#c6b17a] pb-0.5"><strong className="block break-words font-serif text-[38px] font-normal leading-tight">{data.collectorName}</strong></div>
-        <p lang="ur" dir="rtl" className="mt-1 font-[family-name:var(--font-urdu)] text-[12px] leading-[2] text-black">جامعہ الحبیب کی جانب سے چندہ جمع کرنے کا مجاز نمائندہ ہے۔</p>
-        <p className="text-[11px] leading-snug">is an authorized fundraising representative of <strong className="font-semibold">Jamia Al Habib.</strong></p>
+        <div className="mx-auto mt-2 w-[60%] border-b border-[#c6b17a] pb-0.5"><strong className="block break-words font-serif text-[38px] font-normal leading-tight">{data.collectorName}</strong></div>
+        <p className="mx-auto mt-2 max-w-[600px] text-[10px] leading-[1.5]">
+          This is to certify that the above-named person has been authorized by the Institution<br />
+          to collect donations and charitable contributions for a limited period.
+        </p>
       </section>
-      <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
+      <dl className="mt-2 grid grid-cols-2 gap-1.5">
         <Detail en="FUNDRAISER ID NO." ur="شناختی نمبر">{data.collectorCode}</Detail>
         <Detail en="MOBILE NUMBER" ur="موبائل نمبر">{data.phone || "—"}</Detail>
         <Detail en="PARENTAGE (S/O, D/O, C/O)" ur="ولدیت">{data.fatherName || "—"}</Detail>
         <Detail en="ADDRESS" ur="پتہ">{data.address || "—"}</Detail>
       </dl>
-      <section className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-[#cbbb92] bg-[#fbf9f1]/80 px-5 py-3 text-[11px]">
+      <section className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-[#cbbb92] bg-[#fbf9f1]/80 px-3 py-2 text-[10px]">
         <span className="flex items-center gap-2"><CalendarDays size={15} className="text-[#9b8148]" aria-hidden="true" /><strong className="font-medium">Validity</strong><span lang="ur" dir="rtl" className="ms-2 font-[family-name:var(--font-urdu)] text-[9px]">مدت اعتبار</span></span>
         {variedValidity ? <span className="text-end text-[9px] font-medium">Individual book dates apply · ہر کتاب کی الگ مدت<br /><span className="text-[8px] font-normal">See the book list below / تفصیل نیچے درج ہے</span></span>
           : <span className="flex items-center gap-4 whitespace-nowrap font-semibold tabular-nums"><time dateTime={data.validFrom}>{date(data.validFrom)}</time><ArrowRight size={24} strokeWidth={1} className="text-[#b69a57]" aria-hidden="true" /><time dateTime={data.validUntil}>{date(data.validUntil)}</time></span>}
@@ -189,28 +217,31 @@ function Certificate({ data }: { data: AuthorizationCertificate }) {
         </tr>)}</tbody></table>
         <div className="mt-2 grid grid-cols-2 gap-3 rounded-lg border border-[#ccb779] bg-[#fbf9f1]/80 px-2 py-2 text-black">
           <div lang="en" dir="ltr" className="text-left"><h5 className="mb-1 text-[8px] font-semibold tracking-[0.12em] text-[#9b7638]">IMPORTANT</h5><p className="whitespace-pre-line text-[8px] leading-[1.5]">{importantNote.en}</p></div>
-          <div lang="ur" dir="rtl" className="text-right font-[family-name:var(--font-urdu)]"><h5 className="mb-1 text-[8px] font-semibold leading-[2] text-[#9b7638]">ابم نوث</h5><p className="whitespace-pre-line text-[8px] leading-[2.2]">{importantNote.ur}</p></div>
+          <div lang="ur" dir="rtl" className="text-right font-[family-name:var(--font-urdu)]"><h5 className="mb-1 text-[8px] font-semibold leading-[2] text-[#9b7638]">اہم نوٹ</h5><p className="whitespace-pre-line text-[8px] leading-[2.2]">{importantNote.ur}</p></div>
+          
         </div>
       </section>
-      <div className="mt-3 grid grid-cols-2 gap-7 px-2">
-        <section className="min-w-0">
-          <div className="rounded-[15px] bg-[#f2efe3] px-4 py-2.5"><h4 className="mb-1 flex items-center justify-between gap-2 text-[7px] tracking-[0.12em] text-[#657169]"><span>RECEIPT BOOK NO. · {data.books.length}</span><span lang="ur" dir="rtl" className="font-[family-name:var(--font-urdu)] text-[8px] tracking-normal">رسیدی بک نمبر</span></h4>
-            <ul>{data.books.map((book) => { const bookStatus = book.status === "ACTIVE" && today > book.validUntil ? "EXPIRED" : book.status; return <li key={book.id} className="border-b border-[#cbbd8c] py-0.5 text-[10px] leading-snug break-words"><strong className="font-medium">{book.number}</strong>{data.scope === "FUNDRAISER" && <span className="mt-0.5 block text-[7px] leading-relaxed text-[#657169]">{book.assignmentNumber} · {date(book.validFrom)} — {date(book.validUntil)}</span>}{bookStatus !== "ACTIVE" && (bookStatus !== status || book.validUntil !== data.validUntil) && <span className="ms-1 text-[8px] text-[#9e2424]">{states[bookStatus][0]}{data.scope === "ASSIGNMENT" && ` · ${date(book.validUntil)}`}</span>}</li>; })}</ul>
-          </div>
-          <img src="/images/certificate-official-stamp.jpeg" alt="Official Jamia Al-Habib stamp" width={420} height={417} loading="eager" className="mt-3 ms-1 size-[96px] object-contain mix-blend-multiply" />
-        </section>
-        <section className="flex min-w-0 flex-col">
-          <div className="rounded-[15px] bg-[#f2efe3] px-4 py-2 text-center"><h4 className="mb-1 flex items-center justify-between gap-2 text-[7px] tracking-[0.12em] text-[#657169]"><span>EDITION · RANGE</span><span lang="ur" dir="rtl" className="font-[family-name:var(--font-urdu)] text-[8px] tracking-normal">ایڈیشن اور حد</span></h4>
-            <ul className="space-y-1">{editionSummaries(data.books).map((group) => <li key={group.label} className="text-[10px] font-medium leading-snug"><span className="block">{group.label}</span><span className="mx-auto block w-fit max-w-full border-b border-[#cbbd8c] px-1 text-[9px] tabular-nums break-words">{group.ranges}</span></li>)}</ul>
-          </div>
-          <div className="mt-auto pt-3 text-center"><img src="/images/certificate-authorized-signature.jpeg" alt="Authorized signatory signature" width={1289} height={813} loading="eager" className="mx-auto h-[86px] w-[176px] object-contain mix-blend-multiply" />
-            <div className="flex items-center justify-between gap-2 border-t border-[#40594d] pt-1 text-[9px]"><span>Authorized Signatory</span><span lang="ur" dir="rtl" className="font-[family-name:var(--font-urdu)] text-[7px] leading-[2]">مجاز دستخط کنندہ</span></div>
-            <p className="mt-2 text-[10px] font-medium">Maulana Riyazat Husain Azhari</p><p className="border-b border-[#aab2a8] pb-1 text-[7px]">Chief Executive Officer &amp; Chief Functionary</p>
-          </div>
+      <section className="mt-2 rounded-lg border border-[#cbbd8c]/50 bg-[#f2efe3]/75 px-3 py-2">
+        <h4 className="mb-1.5 flex items-center justify-between gap-2 text-[7px] tracking-[0.1em] text-[#657169]"><span>RECEIPT BOOK NO. · {data.books.length}</span><span lang="ur" dir="rtl" className="font-[family-name:var(--font-urdu)] text-[8px] leading-[1.8] tracking-normal">رسید بک نمبر</span></h4>
+        <ul className="flex flex-wrap gap-x-2 gap-y-1.5">{data.books.map(book => {
+          const bookStatus = book.status === "ACTIVE" && today > book.validUntil ? "EXPIRED" : book.status;
+          return <li key={book.id} className="min-w-0 max-w-full rounded-md border border-[#cbbd8c]/65 bg-white/75 px-2 py-1 text-[9px] leading-[1.3] break-words">
+            <strong className="font-medium">{book.number}</strong>
+            {data.scope === "FUNDRAISER" && <span className="mt-0.5 block text-[7px] text-[#657169]">{book.assignmentNumber}</span>}
+            {variedValidity && <span className="mt-0.5 block text-[7px] text-[#657169]">{date(book.validFrom)} — {date(book.validUntil)}</span>}
+            {bookStatus !== "ACTIVE" && (bookStatus !== status || book.validUntil !== data.validUntil) && <span className="ms-1 text-[7px] text-[#9e2424]">{states[bookStatus][0]}{data.scope === "ASSIGNMENT" && ` · ${date(book.validUntil)}`}</span>}
+          </li>;
+        })}</ul>
+      </section>
+      <div className="mt-2 flex items-end justify-between gap-4 px-3">
+        <img src="/images/certificate-official-stamp.jpeg" alt="Official Jamia Al-Habib stamp" width={420} height={417} loading="eager" className="size-16 shrink-0 object-contain mix-blend-multiply" />
+        <section className="w-[240px] max-w-[65%] text-center">
+          <img src="/images/certificate-authorized-signature.jpeg" alt="Authorized signatory signature" width={1289} height={813} loading="eager" className="mx-auto h-12 w-[132px] object-contain mix-blend-multiply" />
+          <div className="flex items-center justify-between gap-2 border-t border-[#40594d] pt-0.5 text-[8px]"><span>Authorized Signatory</span><span lang="ur" dir="rtl" className="font-[family-name:var(--font-urdu)] text-[7px] leading-[1.8]">مجاز دستخط کنندہ</span></div>
+          <p className="mt-1 text-[9px] font-medium">Maulana Riyazat Husain Azhari</p><p className="border-b border-[#aab2a8] pb-0.5 text-[7px]">Chief Executive Officer &amp; Chief Functionary</p>
         </section>
       </div>
-      <footer className="mt-3 border-t border-[#c2aa70] pt-2">
-        {data.historical && <p className="mb-1 text-center text-[7px] text-[#889186]">Reconstructed from historical records · Validity uses the recorded assignment date.</p>}
+      <footer className={`border-t border-[#c2aa70] pt-2 ${printLayout ? "mt-auto" : "mt-2"}`}>
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-[7px] tracking-[0.07em]"><span className="break-words">{data.assignmentNumber}</span><p className="text-center text-[9px] leading-snug tracking-[0.13em] text-[#7c8c7e]">RASULPUR, JAGATSINGHPUR, ODISHA, INDIA<br />CONTACT / WHATSAPP: +91 97777 88 666</p><span className="text-end break-words">{data.number}</span></div>
       </footer>
     </div>
