@@ -4,7 +4,7 @@ import { and, eq, isNull, ne } from "drizzle-orm";
 import { z } from "zod";
 import { getAuth } from "@/lib/auth/server";
 import { getServerEnvironment } from "@/lib/env";
-import { activityLog, people, userVerificationFlows } from "@/lib/db/schema";
+import { activityLog, appSessions, people, userVerificationFlows } from "@/lib/db/schema";
 import { AuthFailure } from "@/modules/auth/auth.types";
 import { consumeAuthRateLimit } from "@/modules/auth/auth.repository";
 import { createUserDraft, guardAccessChange,
@@ -243,6 +243,97 @@ export async function saveUserProfile(id: string, values: UserProfileValues, ver
   return { personId: id, flowId: "", email: values.email, needsVerification: false, proofComplete: true };
 }
 
+export async function approveSignup(id: string) {
+  return withAdminDatabase(async (transaction, actorId) => {
+    const { person } = await requireEditableTarget(transaction, actorId, id);
+    if (person.createdBy !== null || person.role !== "ADMIN" || !person.authUserId || !person.email) {
+      throw new AuthFailure("ACCESS_DENIED");
+    }
+    if (person.status === "ACTIVE") return { personId: id };
+    if (person.status !== "PENDING") throw new AuthFailure("ACCESS_DENIED");
+    const [openFlow] = await transaction.select({ id: userVerificationFlows.id }).from(userVerificationFlows)
+      .where(and(eq(userVerificationFlows.personId, id), ne(userVerificationFlows.state, "COMPLETE"),
+        isNull(userVerificationFlows.deletedAt))).limit(1);
+    if (openFlow) throw new AuthFailure("VERIFICATION_PENDING", 409);
+
+    // Activation requires provider-confirmed email ownership, never a client flag.
+    const result = await getAuth().admin.listUsers({ query: { filterField: "id", filterValue: person.authUserId,
+      filterOperator: "eq", limit: 1 } });
+    requireProviderSuccess(result.error);
+    const payload = z.object({ users: z.array(providerUser) }).safeParse(result.data);
+    const identity = payload.success ? payload.data.users[0] : undefined;
+    if (!identity || identity.id !== person.authUserId || identity.email.toLowerCase() !== person.email || !identity.emailVerified) {
+      throw new AuthFailure("VERIFICATION_PENDING", 409);
+    }
+    // Retain the database guard's required verified workflow and audit trail.
+    const [flow] = await transaction.insert(userVerificationFlows).values({ personId: id, actorId,
+      targetEmail: person.email, purpose: "PROFILE_CHANGE", priorStatus: "PENDING", state: "VERIFIED",
+      details: { role: "ADMIN", fullName: person.fullName, source: "PUBLIC_SIGNUP" },
+      verifiedAt: new Date(), expiresAt: new Date(Date.now() + 600000), createdBy: actorId,
+    }).returning({ id: userVerificationFlows.id });
+    if (!flow) throw new AuthFailure("AUTH_UNAVAILABLE", 503);
+    await transaction.update(people).set({ status: "ACTIVE", updatedBy: actorId, updatedAt: new Date() })
+      .where(eq(people.id, id));
+    await transaction.update(userVerificationFlows).set({ state: "COMPLETE", updatedBy: actorId, updatedAt: new Date() })
+      .where(eq(userVerificationFlows.id, flow.id));
+    await transaction.insert(activityLog).values({ actorId, action: "USER_SIGNUP_APPROVED",
+      resource: "people", recordId: id, createdBy: actorId });
+    return { personId: id };
+  }, true);
+}
+
+export async function deleteUser(id: string) {
+  let stage = "account-check";
+  const authUserId = await withAdminDatabase(async (transaction, actorId) => {
+    const { person, isSelf } = await requireEditableTarget(transaction, actorId, id);
+    if (isSelf) throw new AuthFailure("CANNOT_CHANGE_SELF", 409);
+    await guardAccessChange(transaction, actorId, person,
+      person.role === "SUPER_ADMIN" ? "SUPER_ADMIN" : "ADMIN", "BLOCKED");
+    const now = new Date();
+    // Keep the referenced person row so receipts, assignments and audit history
+    // retain their original authors. All account lookups exclude deleted rows.
+    stage = "mark-deleted";
+    await transaction.update(people).set({ status: "BLOCKED", deletedAt: now,
+      updatedAt: now, updatedBy: actorId }).where(eq(people.id, id));
+    stage = "revoke-sessions";
+    await transaction.update(appSessions).set({ revokedAt: now, updatedAt: now, updatedBy: actorId })
+      .where(and(eq(appSessions.personId, id), isNull(appSessions.revokedAt)));
+    stage = "close-verification";
+    await transaction.update(userVerificationFlows).set({ deletedAt: now, updatedAt: now, updatedBy: actorId })
+      .where(and(eq(userVerificationFlows.personId, id), ne(userVerificationFlows.state, "COMPLETE"),
+        isNull(userVerificationFlows.deletedAt)));
+    stage = "audit-deletion";
+    await transaction.insert(activityLog).values({ actorId, action: "USER_DELETED", resource: "people",
+      recordId: id, oldValues: { role: person.role, status: person.status },
+      newValues: { status: "BLOCKED", deletedAt: now.toISOString() }, createdBy: actorId });
+    return person.authUserId;
+  }, true).catch((error: unknown) => {
+    if (error instanceof AuthFailure) throw error;
+    const cause = error instanceof Error ? error.cause : undefined;
+    const diagnostic = z.object({ code: z.string().regex(/^[0-9A-Z]{5}$/) });
+    const parsed = [diagnostic.safeParse(cause), diagnostic.safeParse(error)]
+      .find((result) => result.success);
+    const sqlState = parsed?.success ? parsed.data.code : undefined;
+    // Expose only the operation stage and SQLSTATE, never SQL or account data.
+    throw Object.assign(new AuthFailure("USER_DELETE_FAILED", 503), {
+      details: { stage, ...(sqlState ? { sqlState } : {}) },
+    });
+  });
+  // Commit access revocation first. Provider outages cannot restore app access.
+  if (authUserId) {
+    try {
+      const result = await getAuth().admin.banUser({ userId: authUserId,
+        banReason: "Account deleted by institution Super Admin" });
+      requireProviderSuccess(result.error);
+    } catch { console.warn("[users] Deleted account provider ban unavailable"); }
+    try {
+      const result = await getAuth().admin.revokeUserSessions({ userId: authUserId });
+      requireProviderSuccess(result.error);
+    } catch { console.warn("[users] Deleted account provider session cleanup unavailable"); }
+  }
+  return { personId: id };
+}
+
 export async function blockUser(id: string, blocked: boolean) {
   const providerError = await withAdminDatabase(async (transaction, actorId) => {
     const { person: current } = await requireEditableTarget(transaction, actorId, id);
@@ -251,7 +342,7 @@ export async function blockUser(id: string, blocked: boolean) {
     const [flow] = await transaction.select({ id: userVerificationFlows.id }).from(userVerificationFlows)
       .where(and(eq(userVerificationFlows.personId, id), ne(userVerificationFlows.state, "COMPLETE"),
         isNull(userVerificationFlows.deletedAt))).limit(1);
-    if (!blocked && (!current.authUserId || flow)) throw new AuthFailure("VERIFICATION_PENDING", 409);
+    if (!blocked && (!current.authUserId || flow || current.status === "PENDING")) throw new AuthFailure("VERIFICATION_PENDING", 409);
     if (!blocked && current.authUserId) {
       const result = await getAuth().admin.unbanUser({ userId: current.authUserId });
       requireProviderSuccess(result.error);

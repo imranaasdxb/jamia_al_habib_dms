@@ -30,9 +30,9 @@ async function findPerson(transaction: RequestDatabase, identity: AuthIdentity, 
 
   if (person.authUserId === null) {
     if (!lock) return null;
-    const [state] = await transaction.select({ firstPersonId: bootstrapState.firstPersonId })
-      .from(bootstrapState).where(eq(bootstrapState.slot, 1)).limit(1);
-    if (state?.firstPersonId !== person.id) return null;
+    // Only self-registered pending accounts may bind their own provider identity.
+    // Managed onboarding keeps its separate, administrator-controlled flow.
+    if (person.createdBy !== null || person.role !== "ADMIN" || person.status !== "PENDING") return null;
     await transaction.update(people).set({ authUserId: identity.id, updatedAt: new Date() })
       .where(and(eq(people.id, person.id), isNull(people.authUserId)));
   }
@@ -42,23 +42,25 @@ async function findPerson(transaction: RequestDatabase, identity: AuthIdentity, 
 
 export async function reserveSignup(email: string, fullName: string): Promise<boolean> {
   return withRequestDatabase({ email }, async (transaction) => {
-    const [state] = await transaction.select().from(bootstrapState)
-      .where(eq(bootstrapState.slot, 1)).for("update");
+    const [state] = await transaction.select({ id: bootstrapState.id }).from(bootstrapState)
+      .where(eq(bootstrapState.slot, 1));
     if (!state) throw new AuthFailure("AUTH_UNAVAILABLE", 503);
 
     const [existing] = await transaction.select().from(people)
       .where(and(eq(people.email, email), isNull(people.deletedAt))).limit(1);
     if (existing) {
-      return existing.authUserId === null && existing.role !== "COLLECTOR"
-        && existing.id === state.firstPersonId;
+      return existing.authUserId === null && existing.role === "ADMIN"
+        && existing.status === "PENDING" && existing.createdBy === null;
     }
-    if (state.firstPersonId !== null) return false;
 
-    const [person] = await transaction.insert(people).values({ fullName, email })
+    const [person] = await transaction.insert(people).values({ fullName, email,
+      role: "ADMIN", status: "PENDING" }).onConflictDoNothing()
       .returning({ id: people.id });
-    if (!person) throw new AuthFailure("AUTH_UNAVAILABLE", 503);
+    if (!person) return false;
+    // Claim only once. The conditional update also handles simultaneous signups
+    // without exposing a claimed row to SELECT FOR UPDATE under RLS.
     await transaction.update(bootstrapState).set({ firstPersonId: person.id, updatedAt: new Date() })
-      .where(eq(bootstrapState.id, state.id));
+      .where(and(eq(bootstrapState.id, state.id), isNull(bootstrapState.firstPersonId)));
     return true;
   });
 }

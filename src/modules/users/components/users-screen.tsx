@@ -39,7 +39,11 @@ export function UsersScreen({ account }: { account: Account }) {
   const [viewing, setViewing] = useState<UserRow | null>(null);
   const [notice, setNotice] = useState<MessageKey | null>(null);
   const [blockTarget, setBlockTarget] = useState<UserRow | null>(null);
+  const [approvingSignup, setApprovingSignup] = useState(false);
   const [blocking, setBlocking] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<MessageKey | null>(null);
   const [formBusy, setFormBusy] = useState(false);
   const key = new URLSearchParams({ search: search.trim(), role, page: String(page) }).toString();
   const fetchUsers = useCallback(async () => {
@@ -60,7 +64,9 @@ export function UsersScreen({ account }: { account: Account }) {
     setEditing(user); setViewing(null); setOpen(true);
   }, []);
   const viewUser = useCallback((user: UserRow) => { setViewing(user); }, []);
-  const chooseBlock = useCallback((user: UserRow) => { setNotice(null); setBlockTarget(user); }, []);
+  const chooseBlock = useCallback((user: UserRow) => { setNotice(null); setApprovingSignup(false); setBlockTarget(user); }, []);
+  const chooseApprove = useCallback((user: UserRow) => { setNotice(null); setApprovingSignup(true); setBlockTarget(user); }, []);
+  const chooseDelete = useCallback((user: UserRow) => { setDeleteError(null); setDeleteTarget(user); }, []);
   const finishEditor = useCallback(() => {
     setOpen(false); setFormBusy(false);
   }, []);
@@ -71,11 +77,26 @@ export function UsersScreen({ account }: { account: Account }) {
     try {
       await usersRequest(`/api/v1/users/${blockTarget.id}`, { method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "block", blocked: blockTarget.status !== "BLOCKED" }),
+        body: JSON.stringify(approvingSignup ? { action: "approveSignup" }
+          : { action: "block", blocked: blockTarget.status !== "BLOCKED" }),
       });
       setNotice("usersSavedSuccess"); setBlockTarget(null); invalidate();
     } catch (error) { setNotice(userErrorMessage(error)); if (userMutationChanged(error)) invalidate(); }
     finally { setBlocking(false); }
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true); setDeleteError(null);
+    try {
+      await usersRequest(`/api/v1/users/${deleteTarget.id}`, { method: "POST",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "delete" }),
+      });
+      setDeleteTarget(null); setNotice("usersDeletedSuccess"); invalidate();
+    } catch (error) {
+      setDeleteError(userErrorMessage(error));
+      if (userMutationChanged(error)) invalidate();
+    } finally { setDeleting(false); }
   }
 
   return <AppShell account={account} search={search} sampleData={false} headerTitle="users"
@@ -108,7 +129,7 @@ export function UsersScreen({ account }: { account: Account }) {
     {error && <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8] auth-error bg-[var(--danger-soft)] text-[color:var(--danger)]"} role="alert">{t(error)}</p>}
     <section className={"users-card-grid grid grid-cols-[repeat(3,_minmax(0,_1fr))] gap-[var(--space-gap)] min-[1800px]:grid-cols-[repeat(4,_minmax(0,_1fr))] max-[1000px]:grid-cols-[repeat(2,_minmax(0,_1fr))]"} aria-label={t("usersRegistered")} aria-busy={loading}>
       {data?.users.map((user) => <UserProfileCard key={user.id} user={user} accountId={account.id}
-        onEdit={editUser} onView={viewUser} onBlock={chooseBlock} />)}
+        onEdit={editUser} onView={viewUser} onBlock={chooseBlock} onApprove={chooseApprove} onDelete={chooseDelete} />)}
       {!data && loading && Array.from({ length: 6 }, (_, index) => <Card key={index} className={"users-card-skeleton min-h-[330px] overflow-hidden pb-[24px] [&_span]:block [&_span]:bg-[var(--muted)] [&_span]:[animation:users-pulse_1.4s_ease-in-out_infinite] [&_span:first-child]:h-[82px] [&_span:first-child]:bg-[var(--accent)] [&_span:nth-child(2)]:h-[84px] [&_span:nth-child(2)]:w-[84px] [&_span:nth-child(2)]:rounded-[50%] [&_span:nth-child(2)]:m-[-40px_auto_30px] [&_span:nth-child(2)]:[border:5px_solid_var(--card)] [&_span:nth-child(2)]:relative [&_span:last-child]:h-[12px] [&_span:last-child]:w-[65%] [&_span:last-child]:rounded-[var(--radius-control)] [&_span:last-child]:m-auto"} aria-hidden="true">
         <span /><span /><span /></Card>)}
     </section>
@@ -144,13 +165,25 @@ export function UsersScreen({ account }: { account: Account }) {
       </div>}
     </Dialog>
     <Dialog open={blockTarget !== null} busy={blocking} onOpenChange={(value) => { if (!value) setBlockTarget(null); }}
-      title={t(blockTarget?.status === "BLOCKED" ? "usersUnblock" : "usersBlock")}
-      description={t(blockTarget?.status === "BLOCKED" ? "usersUnblockHelp" : "usersBlockHelp")}>
+      title={t(approvingSignup ? "usersApproveSignup" : blockTarget?.status === "BLOCKED" ? "usersUnblock" : "usersBlock")}
+      description={t(approvingSignup ? "usersApproveSignupHelp" : blockTarget?.status === "BLOCKED" ? "usersUnblockHelp" : "usersBlockHelp")}>
       <p className={"users-target-name mt-[var(--space-gap)] font-semibold"}>{blockTarget?.fullName}</p>
       {notice && <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8]"} role="alert">{t(notice)}</p>}
       <div className={"dialog-actions flex gap-[10px] flex-wrap mt-[24px]"}><Button loading={blocking} onClick={() => void changeBlock()}>
-        {t(blocking ? "usersSaving" : blockTarget?.status === "BLOCKED" ? "usersUnblock" : "usersBlock")}</Button>
+        {t(blocking ? "usersSaving" : approvingSignup ? "usersApproveSignup" : blockTarget?.status === "BLOCKED" ? "usersUnblock" : "usersBlock")}</Button>
         <Button variant="outline" disabled={blocking} onClick={() => setBlockTarget(null)}>{t("close")}</Button></div>
+    </Dialog>
+    <Dialog open={deleteTarget !== null} busy={deleting}
+      onOpenChange={(value) => { if (!value && !deleting) setDeleteTarget(null); }}
+      title={t("usersDelete")} description={t("usersDeleteHelp")}>
+      <p className="mt-4 font-semibold">{deleteTarget?.fullName}</p>
+      <p className="mt-1 text-sm text-muted-foreground" dir="ltr">{deleteTarget?.email}</p>
+      {deleteError && <p role="alert" className="mt-3 text-sm text-[color:var(--danger)]">{t(deleteError)}</p>}
+      <div className="mt-6 flex gap-3">
+        <Button loading={deleting} className="bg-[var(--danger)] text-white hover:opacity-90" onClick={() => void confirmDelete()}>
+          {t("usersDelete")}</Button>
+        <Button variant="outline" disabled={deleting} onClick={() => setDeleteTarget(null)}>{t("close")}</Button>
+      </div>
     </Dialog>
   </AppShell>;
 }

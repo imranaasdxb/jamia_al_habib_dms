@@ -13,7 +13,9 @@ export function userFailure(error: unknown) {
   const status = error instanceof AuthFailure ? error.status : duplicate ? 409 : 503;
   const code = error instanceof AuthFailure ? error.code : duplicate ? "USER_EXISTS" : "AUTH_UNAVAILABLE";
   const changed = error instanceof AuthFailure && "dataChanged" in error && error.dataChanged === true;
-  return NextResponse.json({ data: null, error: { code }, meta: { changed } }, { status, headers });
+  const details = error instanceof AuthFailure && code === "USER_DELETE_FAILED" && "details" in error
+    ? error.details : undefined;
+  return NextResponse.json({ data: null, error: { code, ...(details ? { details } : {}) }, meta: { changed } }, { status, headers });
 }
 export async function boundedBody(request: NextRequest, maximum: number) {
   if (Number(request.headers.get("content-length") ?? 0) > maximum) throw new AuthFailure("INVALID_INPUT", 413);

@@ -29,6 +29,7 @@ export function userErrorMessage(error: unknown): MessageKey {
     STORAGE_NOT_CONFIGURED: "usersStorageSetup", STORAGE_UNAVAILABLE: "usersStorageFailed",
     INVALID_PHOTO: "usersInvalidPhoto", LAST_ADMIN: "usersLastAdmin", CANNOT_CHANGE_SELF: "usersSelfProtected",
     STALE_USER: "usersStale", VERIFICATION_PENDING: "usersPendingVerification", INVALID_INPUT: "usersInvalidDetails",
+    USER_DELETE_FAILED: "usersDeleteFailed",
   };
   return error instanceof UserActionError ? messages[error.message] ?? "authUnavailable" : "authUnavailable";
 }

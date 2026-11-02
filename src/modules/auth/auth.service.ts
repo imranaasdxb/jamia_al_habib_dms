@@ -140,7 +140,7 @@ export async function handleAuthPost(request: NextRequest, context: AuthRouteCon
     const flow = decodeAuthFlow(request.cookies.get(AUTH_FLOW_COOKIE)?.value);
     requireFlow(input, flow);
     if (input.action === "signup" && !await reserveSignup(input.email, input.name)) {
-      throw new AuthFailure("SIGNUP_CLOSED");
+      throw new AuthFailure("USER_ALREADY_EXISTS", 409);
     }
 
     // Let the SDK proxy handle managed Auth paths and all provider session cookies.

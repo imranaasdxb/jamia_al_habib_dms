@@ -3,7 +3,7 @@ import { requireSameOrigin } from "@/modules/auth/auth.service";
 import { AuthFailure } from "@/modules/auth/auth.types";
 import { loadFlow, withUsersRequest } from "@/modules/users/users.repository";
 import { userActionSchema } from "@/modules/users/users.schema";
-import { blockUser, resendUserOtp, saveUserProfile, startOnboarding, verifyUserOtp } from "@/modules/users/users.service";
+import { approveSignup, blockUser, deleteUser, resendUserOtp, saveUserProfile, startOnboarding, verifyUserOtp } from "@/modules/users/users.service";
 import { userFailure, userJson, userResponse } from "@/modules/users/users.http";
 import type { NextRequest } from "next/server";
 
@@ -33,6 +33,8 @@ async function postUser(request: NextRequest, context: Context) {
     if (input.action === "save") return userResponse(await saveUserProfile(id, input.values, input.version, origin));
     if (input.action === "resend") return userResponse(await resendUserOtp(id, input.flowId, origin));
     if (input.action === "verify") return userResponse(await verifyUserOtp(id, input.flowId, input.otp, origin));
+    if (input.action === "approveSignup") return userResponse(await approveSignup(id));
+    if (input.action === "delete") return userResponse(await deleteUser(id));
     return userResponse(await blockUser(id, input.blocked));
   } catch (error) { return userFailure(error); }
 }

@@ -12,6 +12,7 @@ export function authErrorMessage(error: unknown): MessageKey {
   const code = parsed.success ? parsed.data.code ?? "" : "";
   if (code === "ACCOUNT_PENDING") return "authPending";
   if (code === "SIGNUP_CLOSED") return "authSignupClosed";
+  if (code === "USER_ALREADY_EXISTS" || code === "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL") return "authAccountExists";
   if (code === "ACCESS_DENIED") return "authDenied";
   if (code === "RATE_LIMITED" || code === "TOO_MANY_ATTEMPTS"
     || code === "TOO_MANY_REQUESTS") return "authRateLimited";

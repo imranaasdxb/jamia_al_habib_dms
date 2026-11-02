@@ -28,6 +28,8 @@ export const userActionSchema = z.discriminatedUnion("action", [
   z.strictObject({ action: z.literal("resend"), flowId: z.uuid() }),
   z.strictObject({ action: z.literal("verify"), flowId: z.uuid(), otp: z.string().regex(VALIDATION_PATTERNS.otp) }),
   z.strictObject({ action: z.literal("block"), blocked: z.boolean() }),
+  z.strictObject({ action: z.literal("approveSignup") }),
+  z.strictObject({ action: z.literal("delete") }),
 ]);
 
 export function userEditorSchema(onboarding: boolean) {

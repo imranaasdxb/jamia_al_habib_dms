@@ -1,7 +1,7 @@
 "use client";
 
 import { memo } from "react";
-import { Ban, Eye, Mail, PencilLine, Phone, ShieldCheck, UserRound } from "lucide-react";
+import { Ban, Eye, Mail, PencilLine, Phone, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,9 +12,11 @@ import type { MessageKey } from "@/lib/i18n/messages";
 const statusLabels: Record<UserRow["status"], MessageKey> = {
   ACTIVE: "usersActive", PENDING: "pending", INACTIVE: "usersInactive", BLOCKED: "usersBlocked",
 };
-export const UserProfileCard = memo(function UserProfileCard({ user, accountId, onEdit, onView, onBlock }: {
+export const UserProfileCard = memo(function UserProfileCard({ user, accountId, onEdit, onView, onBlock, onApprove, onDelete }: {
   user: UserRow; accountId: string; onEdit: (user: UserRow) => void;
   onView: (user: UserRow) => void; onBlock: (user: UserRow) => void;
+  onApprove: (user: UserRow) => void;
+  onDelete: (user: UserRow) => void;
 }) {
   const { t } = useLanguage();
   const blocked = user.status === "BLOCKED";
@@ -40,6 +42,9 @@ export const UserProfileCard = memo(function UserProfileCard({ user, accountId, 
         <p><Phone size={15} aria-hidden="true" /><span dir="ltr">{user.phone ?? "—"}</span></p>
       </div>
       {user.verificationPending && <span className={"user-card-pending text-[length:10px] text-[color:var(--warning)] self-start pt-[10px]"}>{t("usersPendingVerification")}</span>}
+      {user.status === "PENDING" && user.accountCreated && !user.verificationPending &&
+        <Button variant="outline" size="small" className="mt-3 w-full" onClick={() => onApprove(user)}>
+          <ShieldCheck size={15} aria-hidden="true" />{t("usersApproveSignup")}</Button>}
       <div className={"user-card-actions flex items-center w-full gap-[6px] pt-[17px] mt-auto [&_.button-small]:flex-1 [&_.button-small]:min-w-0 [&_.button-small]:gap-[5px] [&_.button-small]:px-[7px] [&_.button-icon]:w-[34px] [&_.button-icon]:h-[34px] [&_.button-icon]:p-[6px] [&_.button-icon]:shrink-0"}>
         <Button variant="outline" size="small" onClick={() => onView(user)}>
           <Eye size={15} aria-hidden="true" />{t("usersView")}</Button>
@@ -51,6 +56,9 @@ export const UserProfileCard = memo(function UserProfileCard({ user, accountId, 
           title={t(blocked ? "usersUnblock" : "usersBlock")}
           disabled={user.id === accountId || (blocked && (!user.accountCreated || user.verificationPending))}
           onClick={() => onBlock(user)}><Ban size={17} aria-hidden="true" /></Button>
+        <Button variant="ghost" size="icon" className="text-[color:var(--danger)]"
+          aria-label={t("usersDelete")} title={t("usersDelete")} disabled={user.id === accountId}
+          onClick={() => onDelete(user)}><Trash2 size={17} aria-hidden="true" /></Button>
       </div>
     </div>
   </Card>;
