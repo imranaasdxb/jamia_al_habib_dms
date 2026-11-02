@@ -84,7 +84,7 @@ export function ReturnsScreen({ account }: { account: Account }) {
   const { t, language } = useLanguage(); const cache = usePageDataCache(); const router = useRouter(); const scope = `${account.id}:returns:`;
   const [search, setSearch] = usePageState(`${scope}search`, ""); const [page, setPage] = usePageState(`${scope}page`, 1);
   const [tab, setTab] = usePageState<"OPEN" | "RETURNED">(`${scope}tab`, "OPEN");
-  const [collectorId, setCollector] = usePageState(`${scope}collector`, ""); const [overdue, setOverdue] = usePageState(`${scope}overdue`, "ALL");
+  const [collectorId, setCollector] = usePageState(`${scope}collector`, ""); const [overdue, setOverdue] = usePageState<ReturnQuery["overdue"]>(`${scope}overdue`, "ALL");
   const [bookType, setBookType] = usePageState<ReturnQuery["bookType"]>(`${scope}book-type`, "ALL");
   const [editionId, setEdition] = usePageState(`${scope}edition`, "");
   const [status, setStatus] = usePageState<ReturnQuery["status"]>(`${scope}status`, "ALL");
