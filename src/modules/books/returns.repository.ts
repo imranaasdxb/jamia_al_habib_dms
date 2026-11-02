@@ -1,15 +1,15 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import { ZodError } from "zod";
-import { and, asc, count, desc, eq, ilike, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { bookAssignments, bookCases, bookReceipts, bookReturns, books, collectors, people } from "@/lib/db/schema";
 import { AuthFailure } from "@/modules/auth/auth.types";
 import { withBooksDatabase } from "@/modules/books/books.repository";
 import { bookRowSchema } from "@/modules/books/books.schema";
 import { assignmentRowSchema, indiaToday } from "@/modules/books/assignments.schema";
-import { bookLossResultSchema, openReturnCaseSchema, returnChecks, returnRowSchema } from "@/modules/books/returns.schema";
+import { bookLossResultSchema, openReturnCaseSchema, returnChecks, returnEditionOptionsSchema, returnRowSchema } from "@/modules/books/returns.schema";
 import type { RequestDatabase } from "@/lib/db";
-import type { BookLossSubmission, ReturnQuery, ReturnSubmission } from "@/modules/books/returns.schema";
+import type { BookLossSubmission, ReturnListSummary, ReturnQuery, ReturnSubmission } from "@/modules/books/returns.schema";
 
 type ReturnErrorDetails = { stage?: string; sqlState?: string; object?: string; constraint?: string; function?: string; line?: number; fields?: string[];
   connection?: { host: string; database: string } };
@@ -48,6 +48,73 @@ export function returnDatabaseFailure(error: unknown, stage?: string) {
 }
 
 const literalLike = (term: string) => `%${term.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
+function submissionSearch(query: ReturnQuery) {
+  const term = query.search.replace(/\s+/g, " ").trim();
+  if (!term) return undefined;
+  const book = /^(?:ed[-\s]?(\d{1,4})[-\s]+)?(?:t[-\s]?(\d{1,3})[-\s]+)?book\s*(?:(?:no|number)\.?\s*)?[#:-]?\s*(\d{1,10})(?:\s*\/\s*(\d{1,10}))?$/i.exec(term);
+  if (book?.[3]) {
+    if (Number(book[3]) > 2147483647 || (book[4] && Number(book[4]) > 2147483647)) return sql`false`;
+    return and(eq(books.editionBookNumber, Number(book[3])),
+      book[1] ? eq(books.editionNumber, Number(book[1])) : undefined,
+      book[2] ? and(eq(books.bookType, "TOKEN"), eq(books.tokenValuePaise, Number(book[2]) * 100)) : undefined,
+      book[4] ? eq(books.receiptFrom, Number(book[4])) : undefined);
+  }
+  const receipt = /^receipt\s*(?:(?:no|number)\.?\s*)?[#:-]?\s*(\d{1,10})$/i.exec(term);
+  if (receipt?.[1]) {
+    if (Number(receipt[1]) > 2147483647) return sql`false`;
+    return query.tab === "OPEN"
+      ? sql`${Number(receipt[1])} between ${bookCases.receiptFrom} and ${bookCases.receiptTo}`
+      : sql`${Number(receipt[1])} between ${bookReturns.receiptFrom} and ${bookReturns.receiptTo}`;
+  }
+  const code = /^(?:(?:slip|assignment|return)\s+)?(ASN|RET)[\s-]*(\d{4})[\s-]+(\d{1,12})$/i.exec(term);
+  if (code?.[1] && code[2] && code[3]) {
+    const value = `${code[1].toUpperCase()}-${code[2]}-${String(Number(code[3])).padStart(6, "0")}`;
+    return code[1].toUpperCase() === "ASN" ? eq(bookAssignments.number, value) : eq(bookReturns.number, value);
+  }
+  const shortCode = /^(slip|assignment|asn|return|ret)\s*(?:(?:no|number)\.?\s*)?[#:-]?\s*(\d{1,12})$/i.exec(term);
+  if (shortCode?.[1] && shortCode[2]) {
+    const suffix = `%-${String(Number(shortCode[2])).padStart(6, "0")}`;
+    return /^(return|ret)$/i.test(shortCode[1]) ? ilike(bookReturns.number, suffix) : ilike(bookAssignments.number, suffix);
+  }
+  const jah = /^jah[\s-]*(\d{1,10})$/i.exec(term);
+  if (jah?.[1]) return eq(bookAssignments.collectorCode, `JAH${String(Number(jah[1])).padStart(3, "0")}`);
+  if (/^\d{1,10}$/.test(term)) {
+    const numeric = Number(term);
+    const suffix = `%-${String(numeric).padStart(6, "0")}`;
+    return or(numeric <= 2147483647 ? eq(books.editionBookNumber, numeric) : undefined,
+      ilike(bookAssignments.number, suffix), ilike(bookReturns.number, suffix),
+      eq(bookAssignments.collectorCode, `JAH${String(numeric).padStart(3, "0")}`),
+      term.length >= 3 ? or(ilike(bookAssignments.phone, literalLike(term)), ilike(bookAssignments.whatsapp, literalLike(term))) : undefined);
+  }
+  const phone = term.replace(/\D/g, "");
+  if (/^[+\d\s()-]+$/.test(term) && phone.length >= 7) {
+    const value = literalLike(phone.length === 12 && phone.startsWith("91") ? phone.slice(2) : phone);
+    return or(ilike(bookAssignments.phone, value), ilike(bookAssignments.whatsapp, value));
+  }
+  // Match each word across the relevant labels; user wildcards remain literal.
+  const source = query.tab === "OPEN" ? bookCases.sourceCode : bookReturns.sourceCode;
+  return and(...term.split(" ").slice(0, 8).map((word) => sql`concat_ws(' ',
+    ${books.bookNumber},${source},${books.editionNameEn},${books.editionNameUr},
+    ${bookAssignments.number},${bookReturns.number},${bookAssignments.collectorName},
+    ${bookAssignments.collectorCode},${bookAssignments.phone},${bookAssignments.whatsapp},
+    ${bookAssignments.address},${bookAssignments.areas}::text) ilike ${literalLike(word)}`));
+}
+function submissionEditionOptions(tab: ReturnQuery["tab"]) {
+  return sql<unknown>`coalesce((select jsonb_agg(jsonb_build_object(
+    'id',e.id,'nameEn',e.name_en,'nameUr',e.name_ur,'bookType',e.edition_book_type)
+    order by e.edition_book_type,e.edition_number,e.edition_token_value_paise,e.id)
+    from public.master_records e where e.kind='EDITION' and e.deleted_at is null
+      and e.edition_book_type in ('REGULAR','TOKEN') and exists (
+        select 1 from public.books b
+        ${tab === "OPEN" ? sql`join public.book_cases c on c.book_id=b.id
+          join public.book_assignments a on a.id=c.assignment_id
+          where c.closed_at is null and b.status in ('ASSIGNED','LEFTOVER_ASSIGNED')`
+          : sql`join public.book_returns r on r.book_id=b.id
+          join public.book_assignments a on a.id=r.assignment_id
+          where r.deleted_at is null`}
+          and b.edition_id=e.id and b.deleted_at is null and a.deleted_at is null
+      )), '[]'::jsonb)`;
+}
 const openCount = sql<number>`(select count(*)::integer from public.book_cases c where c.assignment_id = ${bookAssignments.id} and c.closed_at is null)`;
 const caseColumns = { id: bookCases.id, book: books, assignment: bookAssignments, openCount,
   commissionBasisPoints: collectors.commissionBasisPoints, hasPhoto: sql<boolean>`${people.profilePhotoKey} is not null`,
@@ -73,19 +140,71 @@ async function findCase(tx: RequestDatabase, id: string) {
 }
 export async function listOpenReturns(query: ReturnQuery) {
   return withBooksDatabase(async (tx) => {
-    const term = literalLike(query.search);
+    const today = indiaToday();
     const where = and(liveCase, query.collectorId ? eq(bookAssignments.collectorId, query.collectorId) : undefined,
-      query.overdue === "OVERDUE" ? lt(bookAssignments.expectedReturnDate, indiaToday()) : undefined,
-      query.search ? or(ilike(books.bookNumber, term), ilike(bookCases.sourceCode, term), ilike(bookAssignments.collectorName, term), ilike(bookAssignments.collectorCode, term), ilike(bookAssignments.number, term)) : undefined);
-    const [result] = await tx.select({ total: count() }).from(bookCases).innerJoin(books, eq(books.id, bookCases.bookId))
-      .innerJoin(bookAssignments, eq(bookAssignments.id, bookCases.assignmentId)).where(where);
-    const total = result?.total ?? 0; const pageSize = 20; const page = Math.min(query.page, Math.max(1, Math.ceil(total / pageSize)));
-    const rows = await tx.select(caseColumns).from(bookCases).innerJoin(books, eq(books.id, bookCases.bookId))
+      query.bookType !== "ALL" ? eq(books.bookType, query.bookType) : undefined,
+      query.editionId ? eq(books.editionId, query.editionId) : undefined,
+      query.overdue === "OVERDUE" || query.status === "OVERDUE" ? lt(bookAssignments.expectedReturnDate, today) : undefined,
+      query.status === "NOT_STARTED" ? isNull(bookReturns.id) : query.status === "IN_PROGRESS" ? isNotNull(bookReturns.id)
+        : query.status === "RECONCILED" || query.status === "FLAGGED" ? sql`false` : undefined,
+      submissionSearch(query));
+    const focused = Boolean(query.collectorId);
+    const pageSize = focused ? 20 : 8;
+    const previewLimit = 3;
+    type FundraiserCount = { collectorId: string; assignedBookCount: number; matchingBookCount: number };
+    const [result] = await tx.execute<{ data: { total: number; page: number; ids: string[];
+      counts: FundraiserCount[]; summary: ReturnListSummary; editions: unknown } }>(sql`
+      with assigned_cases as materialized (
+        select ${bookCases.id} as id,${bookAssignments.collectorId} as collector_id,
+          ${bookAssignments.expectedReturnDate} as expected_date,${books.editionNumber} as edition_number,
+          ${books.editionBookNumber} as book_number,${bookCases.receiptFrom} as receipt_from,
+          (${bookReturns.id} is not null) as started,(${where}) as matches
+        from public.book_cases join public.books on books.id=book_cases.book_id
+          join public.book_assignments on book_assignments.id=book_cases.assignment_id
+          left join public.book_returns on book_returns.case_id=book_cases.id and book_returns.deleted_at is null
+        where ${liveCase}
+      ), matching as materialized (
+        select * from assigned_cases where matches
+      ), profile_counts as (
+        select collector_id,count(*)::integer as assigned_count,
+          count(*) filter (where matches)::integer as matching_count,
+          min(expected_date) filter (where matches) as first_due
+        from assigned_cases group by collector_id having count(*) filter (where matches)>0
+      ), pagination as (
+        select ${focused ? sql`(select count(*)::integer from matching)` : sql`(select count(*)::integer from profile_counts)`} as total
+      ), paging as (
+        select total,least(${query.page}::integer,greatest(1,ceil(total::numeric/${pageSize})::integer)) as page
+        from pagination
+      ), page_profiles as (
+        select * from profile_counts order by first_due,collector_id
+        limit ${focused ? 1 : pageSize}
+        offset ${focused ? sql`0` : sql`(select (page-1)*${pageSize} from paging)`}
+      ), ranked_cases as (
+        select m.*,row_number() over (partition by m.collector_id
+          order by m.expected_date,m.edition_number nulls last,m.book_number nulls last,m.receipt_from,m.id) as row_position
+        from matching m join page_profiles p on p.collector_id=m.collector_id
+      )
+      select jsonb_build_object('total',total,'page',page,
+        'ids',coalesce((select jsonb_agg(id order by expected_date,collector_id,row_position)
+          from ranked_cases where ${focused ? sql`row_position between ((select page from paging)-1)*${pageSize}+1 and (select page from paging)*${pageSize}`
+            : sql`row_position<=${previewLimit}`}), '[]'::jsonb),
+        'counts',coalesce((select jsonb_agg(jsonb_build_object('collectorId',collector_id,
+          'assignedBookCount',assigned_count,'matchingBookCount',matching_count) order by first_due,collector_id)
+          from page_profiles),'[]'::jsonb),
+        'summary',(select jsonb_build_object('records',count(*),'fundraisers',count(distinct collector_id),
+          'notStarted',count(*) filter (where not started),'inProgress',count(*) filter (where started),
+          'overdue',count(*) filter (where expected_date<${today}::date)) from matching),
+        'editions',${query.options === "1" ? submissionEditionOptions("OPEN") : sql`null`}
+      ) as data from paging`);
+    if (!result?.data) throw new AuthFailure("RETURNS_UNAVAILABLE", 503);
+    const { total, page, ids, counts, summary } = result.data;
+    const rows = ids.length ? await tx.select(caseColumns).from(bookCases).innerJoin(books, eq(books.id, bookCases.bookId))
       .innerJoin(bookAssignments, eq(bookAssignments.id, bookCases.assignmentId))
       .innerJoin(collectors, eq(collectors.personId, bookAssignments.collectorId)).innerJoin(people, eq(people.id, collectors.personId))
-      .leftJoin(bookReturns, eq(bookReturns.caseId, bookCases.id)).where(where)
-      .orderBy(asc(bookAssignments.expectedReturnDate), asc(books.bookNumber), asc(bookCases.id)).limit(pageSize).offset((page - 1) * pageSize);
-    const collectorIds = [...new Set(rows.map((row) => row.assignment.collectorId))];
+      .leftJoin(bookReturns, and(eq(bookReturns.caseId, bookCases.id), isNull(bookReturns.deletedAt)))
+      .where(and(liveCase, inArray(bookCases.id, ids)))
+      .orderBy(asc(bookAssignments.expectedReturnDate), asc(bookAssignments.collectorId), asc(books.editionNumber), asc(books.editionBookNumber), asc(bookCases.id)) : [];
+    const collectorIds = counts.map((item) => item.collectorId);
     const summaries = collectorIds.length ? await tx.select({
       caseId: bookReturns.caseId, collectorId: bookAssignments.collectorId,
       enteredReceiptCount: count(bookReceipts.id),
@@ -104,24 +223,44 @@ export async function listOpenReturns(query: ReturnQuery) {
       enteredReceiptCount: summary.enteredReceiptCount, collectedPaise: summary.collectedPaise,
       collectedCommissionPaise: summary.collectedCommissionPaise,
     }]));
-    const fundraiserTotals = new Map(collectorIds.map((collectorId) => [collectorId,
-      { collectorId, collectedPaise: 0, collectedCommissionPaise: 0 }]));
+    const fundraiserTotals = new Map(counts.map((item) => [item.collectorId,
+      { ...item, collectedPaise: 0, collectedCommissionPaise: 0 }]));
     for (const summary of summaries) {
       const totals = fundraiserTotals.get(summary.collectorId);
       if (totals) { totals.collectedPaise += summary.collectedPaise; totals.collectedCommissionPaise += summary.collectedCommissionPaise; }
     }
     return { rows: rows.map((row) => ({ ...serializeCase(row), ...byCase.get(row.id) })),
-      fundraiserTotals: [...fundraiserTotals.values()], total, page, pageSize };
+      fundraiserTotals: [...fundraiserTotals.values()], total, page, pageSize,
+      summary, pagination: focused ? "BOOKS" as const : "FUNDRAISERS" as const, previewLimit,
+      ...(query.options === "1" ? { editions: returnEditionOptionsSchema.parse(result.data.editions ?? []) } : {}) };
   });
 }
 export async function listBookReturns(query: ReturnQuery) {
   return withBooksDatabase(async (tx) => {
-    const term = literalLike(query.search);
-    const where = and(isNull(bookReturns.deletedAt), query.search ? or(ilike(bookReturns.bookNumber, term), ilike(bookReturns.sourceCode, term), ilike(bookReturns.number, term), ilike(bookReturns.collectorName, term)) : undefined);
-    const [result] = await tx.select({ total: count() }).from(bookReturns).where(where);
+    const where = and(isNull(bookReturns.deletedAt), isNull(bookAssignments.deletedAt), isNull(books.deletedAt),
+      query.collectorId ? eq(bookAssignments.collectorId, query.collectorId) : undefined,
+      query.bookType !== "ALL" ? eq(books.bookType, query.bookType) : undefined,
+      query.editionId ? eq(books.editionId, query.editionId) : undefined,
+      query.status === "IN_PROGRESS" ? inArray(bookReturns.receiptEntryStatus, ["PENDING", "DRAFT"])
+        : query.status === "RECONCILED" || query.status === "FLAGGED" ? eq(bookReturns.receiptEntryStatus, query.status)
+          : query.status === "NOT_STARTED" || query.status === "OVERDUE" ? sql`false` : undefined,
+      submissionSearch(query));
+    const [result] = await tx.select({ total: count(),
+      fundraisers: sql<number>`count(distinct ${bookAssignments.collectorId})::integer`,
+      inProgress: sql<number>`count(*) filter (where ${bookReturns.receiptEntryStatus} in ('PENDING','DRAFT'))::integer`,
+      completed: sql<number>`count(*) filter (where ${bookReturns.receiptEntryStatus}='RECONCILED')::integer`,
+      flagged: sql<number>`count(*) filter (where ${bookReturns.receiptEntryStatus}='FLAGGED')::integer`,
+      editions: query.options === "1" ? submissionEditionOptions("RETURNED") : sql<null>`null`,
+    }).from(bookReturns).innerJoin(bookAssignments, eq(bookAssignments.id, bookReturns.assignmentId))
+      .innerJoin(books, eq(books.id, bookReturns.bookId)).where(where);
     const total = result?.total ?? 0; const pageSize = 20; const page = Math.min(query.page, Math.max(1, Math.ceil(total / pageSize)));
-    const rows = await tx.select().from(bookReturns).where(where).orderBy(desc(bookReturns.createdAt), asc(bookReturns.id)).limit(pageSize).offset((page - 1) * pageSize);
-    return { rows: rows.map(serializeReturn), total, page, pageSize };
+    const rows = await tx.select({ returned: bookReturns }).from(bookReturns)
+      .innerJoin(bookAssignments, eq(bookAssignments.id, bookReturns.assignmentId)).innerJoin(books, eq(books.id, bookReturns.bookId))
+      .where(where).orderBy(desc(bookReturns.createdAt), asc(bookReturns.id)).limit(pageSize).offset((page - 1) * pageSize);
+    return { rows: rows.map(({ returned }) => serializeReturn(returned)), total, page, pageSize,
+      summary: { records: total, fundraisers: result?.fundraisers ?? 0, inProgress: result?.inProgress ?? 0,
+        completed: result?.completed ?? 0, flagged: result?.flagged ?? 0 },
+      ...(query.options === "1" ? { editions: returnEditionOptionsSchema.parse(result?.editions ?? []) } : {}) };
   });
 }
 async function savedResult(tx: RequestDatabase, row: typeof bookReturns.$inferSelect, replayed: boolean) {

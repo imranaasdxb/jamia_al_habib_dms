@@ -40,9 +40,11 @@ interface AppShellProps {
   sampleData?: boolean;
   headerTitle?: MessageKey;
   deferNotifications?: boolean;
+  backLabel?: MessageKey;
+  onBack?: () => void;
 }
 
-export function AppShell({ children, account, sampleData = true, deferNotifications = false }: AppShellProps) {
+export function AppShell({ children, account, sampleData = true, deferNotifications = false, backLabel, onBack }: AppShellProps) {
   const { t, setLanguage } = useLanguage();
   const pathname = usePathname();
   const router = useRouter();
@@ -186,10 +188,11 @@ export function AppShell({ children, account, sampleData = true, deferNotificati
       </header>
       </div>
 
-      <main className={`workspace relative transition-[margin-inline-start] duration-200 motion-reduce:transition-none me-3 ms-[calc(var(--sidebar-width)_+_24px)] min-h-[calc(100dvh_-_100px)] rounded-[24px] border border-border/60 bg-background px-[var(--space-page)] py-5 shadow-[0_2px_12px_rgb(16_27_46/2%)] [&_h1]:flex [&_h1]:min-h-10 [&_h1]:items-center [&_h1]:text-[28px] [&_h1]:tracking-tight ${showBack ? "[&_h1]:ps-11" : ""}`}>
-        {showBack && <Button variant="outline" size="icon" className="absolute start-[var(--space-page)] top-6 z-10 size-8 min-h-8 rounded-full border-border bg-card p-1.5"
-          aria-label={t("layoutBack")} title={t("layoutBack")} onClick={() => { if (window.history.length > 1) router.back(); else router.push("/dashboard"); }}>
+      <main className={`workspace relative transition-[margin-inline-start] duration-200 motion-reduce:transition-none me-3 ms-[calc(var(--sidebar-width)_+_24px)] min-h-[calc(100dvh_-_100px)] rounded-[24px] border border-border/60 bg-background px-[var(--space-page)] py-5 shadow-[0_2px_12px_rgb(16_27_46/2%)] [&_h1]:flex [&_h1]:min-h-10 [&_h1]:items-center [&_h1]:text-[28px] [&_h1]:tracking-tight ${showBack && !backLabel ? "[&_h1]:ps-11" : ""}`}>
+        {showBack && <Button variant="outline" size={backLabel ? "small" : "icon"} className={backLabel ? "mb-4 w-fit rounded-xl" : "absolute start-[var(--space-page)] top-6 z-10 size-8 min-h-8 rounded-full border-border bg-card p-1.5"}
+          aria-label={t(backLabel ?? "layoutBack")} title={t(backLabel ?? "layoutBack")} onClick={() => { if (onBack) onBack(); else if (window.history.length > 1) router.back(); else router.push("/dashboard"); }}>
           <ArrowLeft size={16} strokeWidth={1.7} className="[html[dir='rtl']_&]:rotate-180" aria-hidden="true" />
+          {backLabel && t(backLabel)}
         </Button>}
         {children}
       </main>
