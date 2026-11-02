@@ -5,9 +5,9 @@ import { getAccountContext } from "@/lib/auth/session";
 import { withRequestDatabase } from "@/lib/db";
 import { books, masterRecords, people } from "@/lib/db/schema";
 import { AuthFailure } from "@/modules/auth/auth.types";
-import { bookEntryDataSchema, bookRowSchema, bulkBookRows } from "@/modules/books/books.schema";
+import { bookEntryDataSchema, bookRowSchema, bookStockSummarySchema, bulkBookRows } from "@/modules/books/books.schema";
 import type { RequestDatabase } from "@/lib/db";
-import type { BookSubmission, BooksQuery, SingleBookValues } from "@/modules/books/books.schema";
+import type { BookStockSummary, BookSubmission, BooksQuery, SingleBookValues } from "@/modules/books/books.schema";
 
 export class BookConflict extends AuthFailure {
   constructor(code: string, public readonly bookNumber: string) { super(code, 409); }
@@ -48,19 +48,46 @@ export async function bookEntryContext(page: number) {
 export async function listBooks(query: BooksQuery) {
   return withBooksDatabase(async (tx) => {
     const term = literalLike(query.search);
-    const receipt = /^\d{1,10}$/.test(query.search) && Number(query.search) <= 2147483647 ? Number(query.search) : null;
-    const where = and(isNull(books.deletedAt), query.editionId ? eq(books.editionId, query.editionId) : undefined,
+    const bookMatch = /^(?:book\s*(?:(?:no|number)\.?\s*)?[#:\-]?\s*)?(\d{1,10})$/i.exec(query.search);
+    const receiptMatch = /^receipt\s*(?:(?:no|number)\.?\s*)?[#:\-]?\s*(\d{1,10})$/i.exec(query.search);
+    const bookNumber = bookMatch?.[1] ? Number(bookMatch[1]) : null;
+    const receiptNumber = receiptMatch?.[1] ? Number(receiptMatch[1]) : null;
+    const searchWhere = bookNumber !== null
+      ? bookNumber <= 2147483647 ? or(eq(books.editionBookNumber, bookNumber),
+        and(isNull(books.editionBookNumber), or(eq(books.bookNumber, String(bookNumber)), eq(books.bookNumber, `BOOK${bookNumber}`)))) : sql`false`
+      : receiptNumber !== null
+        ? receiptNumber <= 2147483647 ? sql`int8range(${books.receiptFrom}::bigint, ${books.receiptTo}::bigint, '[]') @> ${receiptNumber}::bigint` : sql`false`
+        : query.search ? or(ilike(books.bookNumber, term), ilike(books.editionNameEn, term), ilike(books.editionNameUr, term)) : undefined;
+    const scope = and(isNull(books.deletedAt), query.editionId ? eq(books.editionId, query.editionId) : undefined,
       query.bookType !== "ALL" ? eq(books.bookType, query.bookType) : undefined,
-      query.tokenValue ? eq(books.tokenValuePaise, Number(query.tokenValue) * 100) : undefined,
-      query.search ? or(ilike(books.bookNumber, term), ilike(books.editionNameEn, term), ilike(books.editionNameUr, term),
-        receipt !== null ? sql`int8range(${books.receiptFrom}::bigint, ${books.receiptTo}::bigint, '[]') @> ${receipt}::bigint` : undefined) : undefined);
-    const [result] = await tx.select({ total: count() }).from(books).where(where);
-    const total = result?.total ?? 0;
+      query.tokenValue ? eq(books.tokenValuePaise, Number(query.tokenValue) * 100) : undefined);
+    const where = and(scope, searchWhere);
+    let total = 0;
+    let summary: BookStockSummary | undefined;
+    if (query.summary === "1" && query.editionId && query.bookType !== "ALL") {
+      // Count the table matches and aggregate the selected edition in one scan.
+      // Search narrows the table only; cards continue to describe the full scope.
+      const [result] = await tx.select({
+        total: sql<number>`count(*) filter (where ${searchWhere ?? sql`true`})::integer`,
+        books: count(), available: sql<number>`count(*) filter (where ${books.status} = 'IN_STOCK')::integer`,
+        assigned: sql<number>`count(*) filter (where ${books.status} in ('ASSIGNED','LEFTOVER_ASSIGNED'))::integer`,
+        closed: sql<number>`count(*) filter (where ${books.status} = 'CLOSED')::integer`,
+        receipts: sql<number>`coalesce(sum(${books.totalReceipts}),0)::double precision`,
+        bookFrom: sql<number | null>`min(${books.editionBookNumber})`, bookTo: sql<number | null>`max(${books.editionBookNumber})`,
+        receiptFrom: sql<number | null>`min(${books.receiptFrom})`, receiptTo: sql<number | null>`max(${books.receiptTo})`,
+        editionNameEn: sql<string | null>`min(${books.editionNameEn})`, editionNameUr: sql<string | null>`min(${books.editionNameUr})`,
+      }).from(books).where(scope);
+      total = result?.total ?? 0;
+      summary = bookStockSummarySchema.parse(result);
+    } else {
+      const [result] = await tx.select({ total: count() }).from(books).where(where);
+      total = result?.total ?? 0;
+    }
     const pageSize = 20;
     const page = Math.min(query.page, Math.max(1, Math.ceil(total / pageSize)));
     const rows = await tx.select().from(books).where(where).orderBy(asc(books.bookType), asc(books.editionNumber), asc(books.editionBookNumber), asc(books.receiptFrom), asc(books.id))
       .limit(pageSize).offset((page - 1) * pageSize);
-    return { rows: rows.map(serialize), total, page, pageSize };
+    return { rows: rows.map(serialize), total, page, pageSize, ...(summary ? { summary } : {}) };
   });
 }
 async function findConflict(tx: RequestDatabase, rows: SingleBookValues[]) {

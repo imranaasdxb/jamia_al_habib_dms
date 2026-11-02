@@ -39,9 +39,19 @@ export const bookRowSchema = z.object({ id: z.uuid(), bookNumber: z.string(), ed
   remarks: z.string(), entryByName: z.string(), updatedAt: z.iso.datetime() });
 export const booksQuerySchema = z.object({ search: z.string().trim().max(100).default(""),
   editionId: z.union([z.literal(""), z.uuid()]).default(""), bookType: z.enum(["ALL", "REGULAR", "TOKEN"]).default("ALL"),
-  tokenValue: z.enum(["", "10", "50", "100"]).default(""), page: z.coerce.number().int().min(1).max(100000).default(1) });
+  tokenValue: z.enum(["", "10", "50", "100"]).default(""), page: z.coerce.number().int().min(1).max(100000).default(1),
+  summary: z.enum(["0", "1"]).default("0") });
+export const bookStockSummarySchema = z.object({
+  editionNameEn: z.string().nullable(), editionNameUr: z.string().nullable(),
+  books: z.number().int().nonnegative(), available: z.number().int().nonnegative(),
+  assigned: z.number().int().nonnegative(), closed: z.number().int().nonnegative(),
+  receipts: z.number().int().nonnegative(),
+  bookFrom: z.number().int().nullable(), bookTo: z.number().int().nullable(),
+  receiptFrom: z.number().int().nullable(), receiptTo: z.number().int().nullable(),
+});
+export type BookStockSummary = z.infer<typeof bookStockSummarySchema>;
 export const booksResponseSchema = z.object({ data: z.array(bookRowSchema),
-  meta: z.object({ total: z.number(), page: z.number(), pageSize: z.number() }) });
+  meta: z.object({ total: z.number(), page: z.number(), pageSize: z.number(), summary: bookStockSummarySchema.optional() }) });
 export const booksSavedSchema = z.object({ data: z.object({ rows: z.array(bookRowSchema), replayed: z.boolean() }) });
 export const bookEntryQuerySchema = z.object({ page: z.coerce.number().int().min(1).max(100000).default(1) });
 export const bookEntryDataSchema = z.object({

@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
-import { memo, useCallback, useState } from "react";
-import { Eye, RefreshCw, Search } from "lucide-react";
+import { memo, useCallback, useState, useSyncExternalStore } from "react";
+import { BookCheck, BookOpen, Eye, HandCoins, LibraryBig, ReceiptText, RefreshCw, Search } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { AppShell } from "@/components/layout/app-shell";
 import { usePageDataCache, usePageQuery, usePageState } from "@/components/page-data-provider";
@@ -15,7 +15,7 @@ import { booksError, booksRequest, bookStatusLabels } from "@/modules/books/book
 import { booksResponseSchema } from "@/modules/books/books.schema";
 import { formatCurrency } from "@/lib/utils";
 import type { Account } from "@/modules/auth/auth.types";
-import type { BookRow, BooksPage, BooksQuery } from "@/modules/books/books.schema";
+import type { BookRow, BooksPage, BooksQuery, BookStockSummary } from "@/modules/books/books.schema";
 import type { MessageKey } from "@/lib/i18n/messages";
 
 function reconcile(previous: BooksPage | undefined, next: BooksPage): BooksPage {
@@ -35,6 +35,45 @@ const StockRow = memo(function StockRow({ row, onView }: { row: BookRow; onView:
     <td><Badge tone={row.status === "IN_STOCK" || row.status === "CLOSED" ? "success" : row.status === "FLAGGED" || row.status === "LOST" ? "danger" : "warning"}>{t(bookStatusLabels[row.status])}</Badge></td>
     <td><Button variant="ghost" size="icon" aria-label={t("booksView")} title={t("booksView")} onClick={() => onView(row)}><Eye size={17} /></Button></td></tr>;
 });
+function StockSummaryCards({ summary, bookType }: { summary: BookStockSummary | undefined; bookType: BooksQuery["bookType"] }) {
+  const { t, language } = useLanguage();
+  if (!summary) return <section className="mt-5" role="status" aria-label={t("booksStockSummary")}>
+    <div className="mb-3 h-4 w-48 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+    <div className="grid grid-cols-5 gap-3 max-[1200px]:grid-cols-3">{Array.from({ length: 5 }, (_, i) =>
+      <Card key={i} className="min-h-28 p-4" aria-hidden="true">
+        <div className="h-3 w-24 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+        <div className="mt-3 h-7 w-20 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+        <div className="mt-2 h-2.5 w-28 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+      </Card>)}</div>
+  </section>;
+  const number = new Intl.NumberFormat(language === "ur" ? "ur-IN" : "en-IN");
+  const range = (from: number | null, to: number | null) => from === null || to === null ? "—" : `${number.format(from)}–${number.format(to)}`;
+  const share = (value: number) => `${number.format(summary.books ? Math.round(value / summary.books * 100) : 0)}% ${t("booksStockShare")}`;
+  const cards = [
+    { label: "editionSummaryBooks", value: summary.books, icon: BookOpen,
+      detail: `${t("booksNumber")}: ${range(summary.bookFrom, summary.bookTo)}`, tone: "border-emerald-200 bg-emerald-50/80 text-emerald-900", iconTone: "bg-emerald-100 text-emerald-700" },
+    { label: "booksInStock", value: summary.available, icon: LibraryBig, detail: share(summary.available), tone: "border-border bg-white text-foreground", iconTone: "bg-sky-50 text-sky-700" },
+    { label: "booksAssigned", value: summary.assigned, icon: HandCoins, detail: share(summary.assigned), tone: "border-border bg-white text-foreground", iconTone: "bg-amber-50 text-amber-700" },
+    { label: "booksClosed", value: summary.closed, icon: BookCheck, detail: share(summary.closed), tone: "border-border bg-white text-foreground", iconTone: "bg-violet-50 text-violet-700" },
+    { label: "booksTotalReceipts", value: summary.receipts, icon: ReceiptText,
+      detail: range(summary.receiptFrom, summary.receiptTo), tone: "border-border bg-white text-foreground", iconTone: "bg-rose-50 text-rose-700" },
+  ] as const;
+  return <section className="mt-5" aria-label={t("booksStockSummary")}>
+    <div className="mb-3 flex items-center justify-between gap-3">
+      <div><h2 className="text-sm font-semibold">{(language === "ur" ? summary.editionNameUr : summary.editionNameEn) || t("mastersEditions")}</h2>
+        <p className="mt-1 text-[11px] text-muted-foreground">{t("booksStockSummaryHelp")}</p></div>
+      <Badge tone="success">{t(bookType === "TOKEN" ? "booksToken" : "booksRegular")}</Badge>
+    </div>
+    <div className="grid grid-cols-5 gap-3 max-[1200px]:grid-cols-3">{cards.map(({ label, value, icon: Icon, detail, tone, iconTone }) =>
+      <div key={label} className={`min-w-0 rounded-2xl border p-4 ${tone}`}>
+        <div className="flex items-start justify-between gap-2"><span className="text-[11px] font-medium leading-relaxed">{t(label)}</span>
+          <span className={`inline-flex size-8 shrink-0 items-center justify-center rounded-xl ${iconTone}`}><Icon size={16} aria-hidden="true" /></span></div>
+        <p className="mt-1 text-2xl font-bold tracking-tight tabular-nums">{number.format(value)}</p>
+        <p className="mt-1 text-[10px] leading-relaxed opacity-70">{detail}</p>
+      </div>)}</div>
+  </section>;
+}
+
 export function BooksScreen({ account }: { account: Account }) {
   const { t, language } = useLanguage();
   const cache = usePageDataCache();
@@ -46,14 +85,28 @@ export function BooksScreen({ account }: { account: Account }) {
   const [page, setPage] = usePageState(`${scope}filters:page`, 1);
   const [viewing, setViewing] = useState<BookRow | null>(null);
   const params = new URLSearchParams({ search: search.trim(), editionId, bookType, tokenValue, page: String(page) }).toString();
-  const key = `${scope}query:edition-order:${params}`;
+  const key = `${scope}query:stock-v2:${params}`;
+  const summaryKey = `${scope}query:stock-summary:${bookType}:${editionId}:${tokenValue}`;
+  const subscribeSummary = useCallback((notify: () => void) => {
+    const entry = cache.entry(summaryKey);
+    entry.listeners.add(notify);
+    return () => { entry.listeners.delete(notify); };
+  }, [cache, summaryKey]);
+  const summarySnapshot = useCallback(() => cache.entry(summaryKey).state, [cache, summaryKey]);
+  const summaryState = useSyncExternalStore(subscribeSummary, summarySnapshot, summarySnapshot);
   const fetchBooks = useCallback(async (): Promise<BooksPage> => {
-    const result = booksResponseSchema.parse(await booksRequest(`/api/v1/books?${params}`));
-    return { rows: result.data, ...result.meta };
-  }, [params]);
+    const entry = cache.entry(summaryKey);
+    const generation = entry.generation;
+    const includeSummary = entry.state.data === undefined || entry.state.stale;
+    const result = booksResponseSchema.parse(await booksRequest(`/api/v1/books?${params}&summary=${includeSummary ? "1" : "0"}`));
+    const { summary, ...pagination } = result.meta;
+    if (summary && entry.generation === generation) cache.setQueryData(summaryKey, summary);
+    return { rows: result.data, ...pagination };
+  }, [cache, params, summaryKey]);
   const ready = bookType !== "ALL" && Boolean(editionId);
   const query = usePageQuery(key, fetchBooks, { enabled: ready, delay: search ? 300 : 0, reconcile });
   const data = ready ? query.data : undefined;
+  const summary = ready && !summaryState.stale ? summaryState.data as BookStockSummary | undefined : undefined;
   const loading = ready && (query.loading || query.stale);
   const selectClass = "input block min-h-[47px] w-full rounded-[var(--radius-control)] border border-[var(--input)] bg-[var(--card)] px-3.5 py-3 text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50";
   function changeType(value: string) {
@@ -84,8 +137,9 @@ export function BooksScreen({ account }: { account: Account }) {
           if (value === "" || value === "10" || value === "50" || value === "100") { setTokenValue(value); setPage(1); }
         }}><option value="">{t("booksAllOptions")}</option>{["10", "50", "100"].map((value) => <option key={value} value={value}>₹{value}</option>)}</select>
       </div>
-      <Button variant="outline" size="icon" loading={loading} disabled={!ready} aria-label={t("usersRefresh")} onClick={() => cache.invalidate(key)}><RefreshCw size={17} /></Button>
+      <Button variant="outline" size="icon" loading={loading} disabled={!ready} aria-label={t("usersRefresh")} onClick={() => { cache.invalidate(summaryKey); cache.invalidate(key); }}><RefreshCw size={17} /></Button>
     </Card>
+    {ready && (query.error == null || summary) && <StockSummaryCards summary={summary} bookType={bookType} />}
     <div className={"books-results flex items-center justify-between gap-[15px] text-[length:12px] min-h-[22px] my-[22px_14px]"}><span>{t("booksRegistered")} {data?.total ?? "—"}</span><span className={"muted text-[color:var(--muted-foreground)]"} role="status">{loading && t(data ? "usersUpdating" : "working")}</span></div>
     {ready && query.error != null && <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8] auth-error bg-[var(--danger-soft)] text-[color:var(--danger)]"} role="alert">{t(booksError(query.error))}</p>}
     <Card className={"books-table-card overflow-hidden [&_.table-container]:mt-0 [&_.books-table_:is(th,_td)]:p-[15px_16px] [&_.books-table_:is(th,_td)]:text-start [&_.books-table_:is(th,_td)]:align-middle [&_.books-table_:is(th,_td)]:[overflow-wrap:anywhere] [&_.books-table_:is(th,_td):first-child]:ps-[20px] [&_.books-table_:is(th,_td):last-child]:pe-[20px] [&_.books-stock-table_:is(th,_td):nth-child(n+5)]:text-center"} aria-busy={loading}><div className={"table-container overflow-x-auto mt-[18px] [scrollbar-width:thin] [scrollbar-color:var(--emerald-300)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--emerald-300)]"}><table className={"data-table w-full border-collapse text-start [&_th]:text-[length:10px] [&_th]:text-[color:var(--muted-foreground)] [&_th]:font-normal [&_th]:text-start [&_th]:p-[0_8px_12px] [&_td]:[border-top:1px_solid_var(--border)] [&_td]:p-[13px_8px] [&_td]:text-[length:11px] [&_th:first-child]:ps-0 [&_td:first-child]:ps-0 [&_th:last-child]:pe-0 [&_td:last-child]:pe-0 [&_th.amount-cell]:text-end books-table [&_thead_th]:bg-[var(--muted)] [&_thead_th]:font-semibold [&_thead_th]:text-[length:11px] [&_tbody_td]:text-[length:12px] [&_tbody_td]:leading-[1.6] books-stock-table [table-layout:fixed] min-w-[920px] [&_.button-icon]:w-[30px] [&_.button-icon]:h-[30px] [&_.button-icon]:p-0"}>
