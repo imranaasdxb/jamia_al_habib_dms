@@ -33,13 +33,13 @@ export const returnQuerySchema = z.object({ search: z.string().trim().max(100).d
   overdue: z.enum(["ALL", "OVERDUE"]).default("ALL"),
   bookType: z.enum(["ALL", "REGULAR", "TOKEN"]).default("ALL"),
   editionId: z.union([z.literal(""), z.uuid()]).default(""),
-  status: z.enum(["ALL", "NOT_STARTED", "IN_PROGRESS", "OVERDUE", "RECONCILED", "FLAGGED"]).default("ALL"),
+  status: z.enum(["ALL", "NOT_STARTED", "IN_PROGRESS", "CLOSED", "REOPENED", "OVERDUE", "RECONCILED", "FLAGGED"]).default("ALL"),
   options: z.enum(["0", "1"]).default("0"),
   tab: z.enum(["OPEN", "RETURNED"]).default("OPEN"), page: z.coerce.number().int().min(1).max(100000).default(1) });
 const summaryCount = z.number().int().nonnegative();
 export const returnListSummarySchema = z.object({ records: summaryCount, fundraisers: summaryCount,
   inProgress: summaryCount, notStarted: summaryCount.optional(), overdue: summaryCount.optional(),
-  completed: summaryCount.optional(), flagged: summaryCount.optional() });
+  completed: summaryCount.optional(), flagged: summaryCount.optional(), closed: summaryCount.optional(), reopened: summaryCount.optional() });
 export const returnEditionOptionsSchema = z.array(z.object({ id: z.uuid(), nameEn: z.string(), nameUr: z.string(),
   bookType: z.enum(["REGULAR", "TOKEN"]) }));
 export type ReturnListSummary = z.infer<typeof returnListSummarySchema>;
@@ -48,6 +48,7 @@ const returnListMeta = { total: z.number(), page: z.number(), pageSize: z.number
   summary: returnListSummarySchema.optional(), editions: returnEditionOptionsSchema.optional() };
 export const openReturnCaseSchema = z.object({ id: z.uuid(), source: z.enum(["NEW", "LEFTOVER"]), sourceCode: z.string(), book: bookRowSchema, assignment: assignmentRowSchema,
   commissionBasisPoints: z.number().int().nullable(), hasPhoto: z.boolean(), submissionId: z.uuid().nullable(),
+  submissionStatus: z.enum(["NOT_STARTED", "IN_PROGRESS", "CLOSED", "REOPENED"]), submissionVersion: summaryCount.nullable(),
   enteredReceiptCount: z.number().int().nonnegative().default(0),
   collectedPaise: money.default(0), collectedCommissionPaise: money.default(0) });
 export const openReturnsResponseSchema = z.object({ data: z.array(openReturnCaseSchema), meta: z.object({
@@ -67,7 +68,8 @@ export const returnRowSchema = z.object({ id: z.uuid(), number: z.string(), case
   remainingReceipts: z.number().int(), commissionBasisPoints: z.number().int(), commissionPaise: money,
   netPaise: money, cashHandoverPaise: z.number().int(), commissionGiven: z.boolean(),
   exceptions: z.array(storedExceptionSchema), flagReasonId: z.uuid().nullable(), flagReasonEn: z.string(), flagReasonUr: z.string(), expectedPaise: money.nullable(), foundPaise: money.nullable(),
-  remarks: z.string(), checkedByName: z.string(), receiptEntryStatus: z.enum(["PENDING", "DRAFT", "RECONCILED", "FLAGGED"]), createdAt: z.iso.datetime() });
+  remarks: z.string(), checkedByName: z.string(), receiptEntryStatus: z.enum(["PENDING", "DRAFT", "RECONCILED", "FLAGGED"]), createdAt: z.iso.datetime(),
+  finalized: z.boolean().optional(), reopened: z.boolean().optional(), unused: z.boolean().optional(), submissionVersion: summaryCount.optional() });
 export const returnsResponseSchema = z.object({ data: z.array(returnRowSchema), meta: z.object(returnListMeta) });
 export const returnSavedSchema = z.object({ data: z.object({ row: returnRowSchema, book: bookRowSchema, replayed: z.boolean() }) });
 export type ReturnValues = z.infer<typeof returnValuesSchema>;

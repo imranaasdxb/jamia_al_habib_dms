@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import { ZodError } from "zod";
-import { and, asc, count, desc, eq, ilike, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { bookAssignments, bookCases, bookReceipts, bookReturns, books, collectors, people } from "@/lib/db/schema";
 import { AuthFailure } from "@/modules/auth/auth.types";
 import { withBooksDatabase } from "@/modules/books/books.repository";
@@ -108,7 +108,8 @@ function submissionEditionOptions(tab: ReturnQuery["tab"]) {
         select 1 from public.books b
         ${tab === "OPEN" ? sql`join public.book_cases c on c.book_id=b.id
           join public.book_assignments a on a.id=c.assignment_id
-          where c.closed_at is null and b.status in ('ASSIGNED','LEFTOVER_ASSIGNED')`
+          where (c.closed_at is null and b.status in ('ASSIGNED','LEFTOVER_ASSIGNED')
+            or exists (select 1 from public.book_returns r where r.case_id=c.id and r.finalized_at is not null and r.deleted_at is null))`
           : sql`join public.book_returns r on r.book_id=b.id
           join public.book_assignments a on a.id=r.assignment_id
           where r.deleted_at is null`}
@@ -118,18 +119,28 @@ function submissionEditionOptions(tab: ReturnQuery["tab"]) {
 const openCount = sql<number>`(select count(*)::integer from public.book_cases c where c.assignment_id = ${bookAssignments.id} and c.closed_at is null)`;
 const caseColumns = { id: bookCases.id, book: books, assignment: bookAssignments, openCount,
   commissionBasisPoints: collectors.commissionBasisPoints, hasPhoto: sql<boolean>`${people.profilePhotoKey} is not null`,
-  submissionId: bookReturns.id,
+  submissionId: bookReturns.id, submissionVersion: bookReturns.receiptEntryVersion,
+  finalizedAt: bookReturns.finalizedAt, reopenedAt: bookReturns.reopenedAt,
   receiptFrom: bookCases.receiptFrom, receiptTo: bookCases.receiptTo, source: bookCases.source, sourceCode: bookCases.sourceCode };
 type CaseRecord = { id: string; book: typeof books.$inferSelect; assignment: typeof bookAssignments.$inferSelect; openCount: number;
-  commissionBasisPoints: number | null; hasPhoto: boolean; submissionId: string | null;
+  commissionBasisPoints: number | null; hasPhoto: boolean; submissionId: string | null; submissionVersion: number | null;
+  finalizedAt: Date | null; reopenedAt: Date | null;
   receiptFrom: number; receiptTo: number; source: "NEW" | "LEFTOVER"; sourceCode: string };
 const serializeCase = (row: CaseRecord) => openReturnCaseSchema.parse({ id: row.id, source: row.source, sourceCode: row.sourceCode,
   commissionBasisPoints: row.commissionBasisPoints, hasPhoto: row.hasPhoto, submissionId: row.submissionId,
+  submissionVersion: row.submissionVersion,
+  submissionStatus: row.finalizedAt ? "CLOSED" : row.reopenedAt ? "REOPENED" : row.submissionId ? "IN_PROGRESS" : "NOT_STARTED",
   book: bookRowSchema.parse({ ...row.book, receiptFrom: row.receiptFrom, receiptTo: row.receiptTo, totalReceipts: row.receiptTo - row.receiptFrom + 1,
     faceValuePaise: row.book.tokenValuePaise === null ? null : (row.receiptTo - row.receiptFrom + 1) * row.book.tokenValuePaise, updatedAt: row.book.updatedAt.toISOString() }),
   assignment: assignmentRowSchema.parse({ ...row.assignment, openCount: row.openCount, updatedAt: row.assignment.updatedAt.toISOString() }) });
-const serializeReturn = (row: typeof bookReturns.$inferSelect) => returnRowSchema.parse({ ...row, createdAt: row.createdAt.toISOString() });
+const serializeReturn = (row: typeof bookReturns.$inferSelect) => returnRowSchema.parse({ ...row, createdAt: row.createdAt.toISOString(),
+  unused: row.finalizedAt !== null && row.outcome === "PARTLY_USED" && row.receiptEntryStatus === "RECONCILED" && row.receiptsUsed === 0 && row.lastUsed === null,
+  finalized: row.finalizedAt !== null, reopened: row.finalizedAt === null && row.reopenedAt !== null, submissionVersion: row.receiptEntryVersion });
 const liveCase = and(isNull(bookCases.closedAt), isNull(books.deletedAt), isNull(bookAssignments.deletedAt), inArray(books.status, ["ASSIGNED", "LEFTOVER_ASSIGNED"]));
+const listedCase = and(isNull(books.deletedAt), isNull(bookAssignments.deletedAt),
+  or(liveCase, and(isNotNull(bookCases.closedAt), isNotNull(bookReturns.finalizedAt),
+    sql`not (${bookReturns.outcome}='PARTLY_USED' and ${bookReturns.receiptEntryStatus}='RECONCILED'
+      and ${bookReturns.receiptsUsed}=0 and ${bookReturns.lastUsed} is null)`)));
 async function findCase(tx: RequestDatabase, id: string) {
   const [row] = await tx.select(caseColumns).from(bookCases).innerJoin(books, eq(books.id, bookCases.bookId))
     .innerJoin(bookAssignments, eq(bookAssignments.id, bookCases.assignmentId))
@@ -141,13 +152,14 @@ async function findCase(tx: RequestDatabase, id: string) {
 export async function listOpenReturns(query: ReturnQuery) {
   return withBooksDatabase(async (tx) => {
     const today = indiaToday();
-    const where = and(liveCase, query.collectorId ? eq(bookAssignments.collectorId, query.collectorId) : undefined,
+    const where = and(query.collectorId ? eq(bookAssignments.collectorId, query.collectorId) : undefined,
       query.bookType !== "ALL" ? eq(books.bookType, query.bookType) : undefined,
       query.editionId ? eq(books.editionId, query.editionId) : undefined,
-      query.overdue === "OVERDUE" || query.status === "OVERDUE" ? lt(bookAssignments.expectedReturnDate, today) : undefined,
-      query.status === "NOT_STARTED" ? isNull(bookReturns.id) : query.status === "IN_PROGRESS" ? isNotNull(bookReturns.id)
-        : query.status === "RECONCILED" || query.status === "FLAGGED" ? sql`false` : undefined,
-      submissionSearch(query));
+      submissionSearch(query)) ?? sql`true`;
+    const statusFilter = query.status === "OVERDUE" || query.overdue === "OVERDUE" ? sql`not closed and expected_date<${today}::date`
+      : query.status === "CLOSED" ? sql`closed` : query.status === "REOPENED" ? sql`reopened`
+        : query.status === "IN_PROGRESS" ? sql`started and not closed and not reopened` : query.status === "NOT_STARTED" ? sql`not started`
+          : query.status === "ALL" ? sql`true` : sql`false`;
     const focused = Boolean(query.collectorId);
     const pageSize = focused ? 20 : 8;
     const previewLimit = 3;
@@ -158,18 +170,21 @@ export async function listOpenReturns(query: ReturnQuery) {
         select ${bookCases.id} as id,${bookAssignments.collectorId} as collector_id,
           ${bookAssignments.expectedReturnDate} as expected_date,${books.editionNumber} as edition_number,
           ${books.editionBookNumber} as book_number,${bookCases.receiptFrom} as receipt_from,
-          (${bookReturns.id} is not null) as started,(${where}) as matches
+          (${bookReturns.id} is not null) as started, (${bookReturns.finalizedAt} is not null) as closed,
+          (${bookReturns.reopenedAt} is not null and ${bookReturns.finalizedAt} is null) as reopened, (${where}) as in_scope
         from public.book_cases join public.books on books.id=book_cases.book_id
           join public.book_assignments on book_assignments.id=book_cases.assignment_id
           left join public.book_returns on book_returns.case_id=book_cases.id and book_returns.deleted_at is null
-        where ${liveCase}
+        where ${listedCase}
+      ), scoped_cases as (
+        select *, (in_scope and (${statusFilter})) as matches from assigned_cases
       ), matching as materialized (
-        select * from assigned_cases where matches
+        select * from scoped_cases where matches
       ), profile_counts as (
         select collector_id,count(*)::integer as assigned_count,
           count(*) filter (where matches)::integer as matching_count,
           min(expected_date) filter (where matches) as first_due
-        from assigned_cases group by collector_id having count(*) filter (where matches)>0
+        from scoped_cases group by collector_id having count(*) filter (where matches)>0
       ), pagination as (
         select ${focused ? sql`(select count(*)::integer from matching)` : sql`(select count(*)::integer from profile_counts)`} as total
       ), paging as (
@@ -181,7 +196,7 @@ export async function listOpenReturns(query: ReturnQuery) {
         offset ${focused ? sql`0` : sql`(select (page-1)*${pageSize} from paging)`}
       ), ranked_cases as (
         select m.*,row_number() over (partition by m.collector_id
-          order by m.expected_date,m.edition_number nulls last,m.book_number nulls last,m.receipt_from,m.id) as row_position
+          order by m.closed,m.expected_date,m.edition_number nulls last,m.book_number nulls last,m.receipt_from,m.id) as row_position
         from matching m join page_profiles p on p.collector_id=m.collector_id
       )
       select jsonb_build_object('total',total,'page',page,
@@ -192,8 +207,9 @@ export async function listOpenReturns(query: ReturnQuery) {
           'assignedBookCount',assigned_count,'matchingBookCount',matching_count) order by first_due,collector_id)
           from page_profiles),'[]'::jsonb),
         'summary',(select jsonb_build_object('records',count(*),'fundraisers',count(distinct collector_id),
-          'notStarted',count(*) filter (where not started),'inProgress',count(*) filter (where started),
-          'overdue',count(*) filter (where expected_date<${today}::date)) from matching),
+          'notStarted',count(*) filter (where not started),'inProgress',count(*) filter (where started and not closed and not reopened),
+          'closed',count(*) filter (where closed),'reopened',count(*) filter (where reopened),
+          'overdue',count(*) filter (where not closed and expected_date<${today}::date)) from assigned_cases where in_scope),
         'editions',${query.options === "1" ? submissionEditionOptions("OPEN") : sql`null`}
       ) as data from paging`);
     if (!result?.data) throw new AuthFailure("RETURNS_UNAVAILABLE", 503);
@@ -202,8 +218,8 @@ export async function listOpenReturns(query: ReturnQuery) {
       .innerJoin(bookAssignments, eq(bookAssignments.id, bookCases.assignmentId))
       .innerJoin(collectors, eq(collectors.personId, bookAssignments.collectorId)).innerJoin(people, eq(people.id, collectors.personId))
       .leftJoin(bookReturns, and(eq(bookReturns.caseId, bookCases.id), isNull(bookReturns.deletedAt)))
-      .where(and(liveCase, inArray(bookCases.id, ids)))
-      .orderBy(asc(bookAssignments.expectedReturnDate), asc(bookAssignments.collectorId), asc(books.editionNumber), asc(books.editionBookNumber), asc(bookCases.id)) : [];
+      .where(and(listedCase, inArray(bookCases.id, ids)))
+      .orderBy(sql`(${bookReturns.finalizedAt} is not null)`, asc(bookAssignments.expectedReturnDate), asc(bookAssignments.collectorId), asc(books.editionNumber), asc(books.editionBookNumber), asc(bookCases.id)) : [];
     const collectorIds = counts.map((item) => item.collectorId);
     const summaries = collectorIds.length ? await tx.select({
       caseId: bookReturns.caseId, collectorId: bookAssignments.collectorId,

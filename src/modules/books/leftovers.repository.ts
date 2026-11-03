@@ -18,17 +18,20 @@ export async function listLeftovers(query: LeftoversQuery) {
     const where = and(isNull(leftoverBooks.deletedAt), isNull(books.deletedAt), isNull(bookReturns.deletedAt), isNull(bookAssignments.deletedAt),
       query.status === "AVAILABLE" ? eligible : query.status === "HELD" ? or(eq(leftoverBooks.status, "HELD"), and(eq(leftoverBooks.status, "AVAILABLE"), sql`not ${eligible}`))
         : query.status === "ASSIGNED" ? eq(leftoverBooks.status, "ASSIGNED") : undefined,
-      query.search ? or(ilike(leftoverBooks.code, term), ilike(books.bookNumber, term), ilike(bookAssignments.collectorName, term)) : undefined);
+      query.search ? or(ilike(leftoverBooks.code, term), ilike(books.bookNumber, term), ilike(bookAssignments.collectorName, term), ilike(bookAssignments.number, term)) : undefined);
     const base = () => tx.select({ total: count() }).from(leftoverBooks).innerJoin(books, eq(books.id, leftoverBooks.bookId))
       .innerJoin(bookReturns, eq(bookReturns.id, leftoverBooks.returnId)).innerJoin(bookAssignments, eq(bookAssignments.id, bookReturns.assignmentId));
     const [result] = await base().where(where); const total = result?.total ?? 0; const pageSize = 20;
     const page = Math.min(query.page, Math.max(1, Math.ceil(total / pageSize)));
-    const rows = await tx.select({ leftover: leftoverBooks, book: books, returnDate: bookReturns.returnDate, returnedByName: bookAssignments.collectorName, assignable: eligible })
+    const rows = await tx.select({ leftover: leftoverBooks, book: books, returnDate: bookReturns.returnDate, returnedByName: bookAssignments.collectorName,
+      previousAssignmentNumber: bookAssignments.number, previousAssignmentDate: bookAssignments.assignmentDate,
+      unused: sql<boolean>`${bookReturns.receiptsUsed}=0 and ${bookReturns.lastUsed} is null and ${leftoverBooks.receiptFrom}=${bookReturns.receiptFrom}`,
+      assignable: eligible })
       .from(leftoverBooks).innerJoin(books, eq(books.id, leftoverBooks.bookId)).innerJoin(bookReturns, eq(bookReturns.id, leftoverBooks.returnId))
       .innerJoin(bookAssignments, eq(bookAssignments.id, bookReturns.assignmentId)).where(where)
       .orderBy(desc(leftoverBooks.createdAt), desc(leftoverBooks.id)).limit(pageSize).offset((page - 1) * pageSize);
-    return { rows: rows.map(({ leftover, book, returnDate, returnedByName, assignable }) => leftoverRowSchema.parse({ ...leftover, book: {
-      ...book, updatedAt: book.updatedAt.toISOString() }, returnDate, returnedByName, assignable,
-      status: leftover.status === "AVAILABLE" && !assignable ? "HELD" : leftover.status, updatedAt: leftover.updatedAt.toISOString() })), total, page, pageSize };
+    return { rows: rows.map(({ leftover, book, ...details }) => leftoverRowSchema.parse({ ...leftover, book: {
+      ...book, updatedAt: book.updatedAt.toISOString() }, ...details,
+      status: leftover.status === "AVAILABLE" && !details.assignable ? "HELD" : leftover.status, updatedAt: leftover.updatedAt.toISOString() })), total, page, pageSize };
   });
 }

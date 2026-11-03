@@ -16,6 +16,8 @@ import { indiaToday } from "@/modules/books/assignments.schema";
 import { bookLossResponseSchema, displayMoney, openReturnsResponseSchema, returnsResponseSchema } from "@/modules/books/returns.schema";
 import { ReturnForm } from "@/modules/books/components/return-form";
 import { AuthorizationCertificateView } from "@/modules/books/components/authorization-certificate";
+import { receiptError, receiptRequest } from "@/modules/receipts/receipts.client";
+import { receiptBookResponseSchema } from "@/modules/receipts/receipts.schema";
 import type { Account } from "@/modules/auth/auth.types";
 import type { OpenReturnCase, ReturnRow, ReturnQuery, ReturnListSummary, ReturnEditionOption } from "@/modules/books/returns.schema";
 import type { MessageKey } from "@/lib/i18n/messages";
@@ -31,14 +33,16 @@ function submissionBookNumber(row: OpenReturnCase) {
 }
 
 function FundraiserCertificateAction({ rows, onView }: { rows: OpenReturnCase[]; onView: (id: string, fundraiserId: string) => void }) {
-  const { t } = useLanguage(); const first = rows[0]?.assignment;
+  const { t } = useLanguage(); const first = rows.find((row) => row.submissionStatus !== "CLOSED")?.assignment;
+  if (!first) return null;
   return <div className="flex flex-wrap items-center gap-2 border-t border-primary/10 bg-accent/20 px-4 py-2">
     <span className="text-[11px] font-medium text-muted-foreground">{t("certificateFundraiser")}</span>
-    <Button size="small" variant="outline" className="ms-auto" disabled={!first} onClick={() => { if (first) onView(first.id, first.collectorId); }}><Award size={15} aria-hidden="true" />{t("certificateView")}</Button>
+    <Button size="small" variant="outline" className="ms-auto" onClick={() => onView(first.id, first.collectorId)}><Award size={15} aria-hidden="true" />{t("certificateView")}</Button>
   </div>;
 }
 
-function SubmissionSummary({ summary, tab }: { summary: ReturnListSummary | undefined; tab: "OPEN" | "RETURNED" }) {
+function SubmissionSummary({ summary, tab, status, onStatusChange }: { summary: ReturnListSummary | undefined; tab: "OPEN" | "RETURNED";
+  status: ReturnQuery["status"]; onStatusChange: (status: ReturnQuery["status"]) => void }) {
   const { t, language } = useLanguage();
   const number = new Intl.NumberFormat(language === "ur" ? "ur-IN" : "en-IN");
   const cards = tab === "OPEN" ? [
@@ -52,18 +56,29 @@ function SubmissionSummary({ summary, tab }: { summary: ReturnListSummary | unde
     { label: "returnsReconciled", value: summary?.completed, icon: ClipboardCheck, detail: "submissionSummaryReconciledHelp" },
     { label: "booksFlagged", value: summary?.flagged, icon: CircleAlert, detail: "submissionSummaryFlaggedHelp" },
   ] as const;
+  const progressFilters = [
+    { status: "IN_PROGRESS", label: "submissionInProgress", value: summary?.inProgress },
+    { status: "CLOSED", label: "booksClosed", value: summary?.closed },
+    { status: "REOPENED", label: "submissionStatusReopened", value: summary?.reopened },
+  ] as const;
   return <section className="mb-5" aria-label={t("submissionListSummary")} aria-busy={!summary}>
     <p className="mb-3 text-[11px] text-muted-foreground">{t("submissionSummaryScope")}
       {summary && tab === "OPEN" && <span className="ms-2">{t("submissionNotStarted")}: {number.format(summary.notStarted ?? 0)}</span>}
       {summary && tab === "RETURNED" && <span className="ms-2">{t("submissionInProgress")}: {number.format(summary.inProgress)}</span>}
     </p>
-    <div className="grid grid-cols-4 gap-3">{cards.map(({ label, value, icon: Icon, detail }, i) =>
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">{cards.map(({ label, value, icon: Icon, detail }, i) =>
       <div key={label} className={`min-w-0 rounded-2xl border p-4 ${i === 0 ? "border-emerald-200 bg-emerald-50/80 text-emerald-950" : "border-border bg-card"}`}>
         <div className="flex items-start justify-between gap-3"><span className="text-[11px] font-medium leading-relaxed">{t(label)}</span>
           <span className={`inline-flex size-9 shrink-0 items-center justify-center rounded-xl ${i === 0 ? "bg-emerald-100 text-emerald-700" : i === 3 ? "bg-amber-50 text-amber-700" : "bg-muted text-primary"}`}><Icon size={17} aria-hidden="true" /></span></div>
-        {summary ? <p className="mt-1 text-2xl font-bold tracking-tight tabular-nums">{number.format(value ?? 0)}</p>
+        {tab === "OPEN" && label === "submissionInProgress" ? <div className="mt-2 grid grid-cols-3 divide-x divide-border rounded-lg border border-border">
+          {progressFilters.map((item) => <button key={item.status} type="button" disabled={!summary} aria-pressed={status === item.status}
+            className="min-w-0 px-1.5 py-1.5 text-center text-[10px] leading-tight hover:bg-accent aria-pressed:bg-accent aria-pressed:text-primary"
+            onClick={() => onStatusChange(status === item.status ? "ALL" : item.status)}>
+            <span className="block text-lg font-bold tabular-nums">{summary ? number.format(item.value ?? 0) : "—"}</span>{t(item.label)}
+          </button>)}
+        </div> : summary ? <p className="mt-1 text-2xl font-bold tracking-tight tabular-nums">{number.format(value ?? 0)}</p>
           : <div className="mt-2 h-7 w-20 animate-pulse rounded bg-muted motion-reduce:animate-none" />}
-        <p className="mt-1 text-[10px] leading-relaxed opacity-65">{t(detail)}</p>
+        {!(tab === "OPEN" && label === "submissionInProgress") && <p className="mt-1 text-[10px] leading-relaxed opacity-65">{t(detail)}</p>}
       </div>)}</div>
   </section>;
 }
@@ -93,8 +108,11 @@ export function ReturnsScreen({ account }: { account: Account }) {
   const [lostBook, setLostBook] = useState<OpenReturnCase | null>(null);
   const [lossReason, setLossReason] = useState(""); const [markingLost, setMarkingLost] = useState(false);
   const [lossError, setLossError] = useState<MessageKey | null>(null); const [lossNotice, setLossNotice] = useState(false);
+  const [reopenTarget, setReopenTarget] = useState<{ id: string; version: number; book: string } | null>(null);
+  const [reopenReason, setReopenReason] = useState(""); const [reopening, setReopening] = useState(false);
+  const [reopenError, setReopenError] = useState<MessageKey | null>(null);
   const params = new URLSearchParams({ search: search.trim(), tab, collectorId, overdue, bookType, editionId, status, page: String(page) }).toString();
-  const optionsKey = `${scope}${tab === "OPEN" ? "open" : "returned"}:edition-options:v1`;
+  const optionsKey = `${scope}${tab === "OPEN" ? "open" : "returned"}:edition-options:v2`;
   const subscribeOptions = useCallback((notify: () => void) => {
     const entry = cache.entry(optionsKey); entry.listeners.add(notify);
     return () => { entry.listeners.delete(notify); };
@@ -110,8 +128,8 @@ export function ReturnsScreen({ account }: { account: Account }) {
     if (result.meta.editions && entry.generation === generation) cache.setQueryData(optionsKey, result.meta.editions);
     return result;
   }, [cache, optionsKey, params, tab]);
-  const queryKey = `${scope}${tab === "OPEN" ? "open" : "returned"}:profile-preview-v3:${params}`;
-  const query = usePageQuery(queryKey, load, { enabled: !current && !lostBook && !viewingCertificate, delay: search ? 400 : 0 });
+  const queryKey = `${scope}${tab === "OPEN" ? "open" : "returned"}:profile-preview-v4:${params}`;
+  const query = usePageQuery(queryKey, load, { enabled: !current && !lostBook && !viewingCertificate && !reopenTarget, delay: search ? 400 : 0 });
   const loading = query.loading || query.stale;
   const data = query.data; const rows = tab === "OPEN" ? data?.data as OpenReturnCase[] | undefined : undefined;
   const fundraiserTotals = new Map((data && "fundraiserTotals" in data.meta ? data.meta.fundraiserTotals : [])
@@ -177,6 +195,31 @@ export function ReturnsScreen({ account }: { account: Account }) {
     } catch (error) { setLossError(booksError(error)); }
     finally { setMarkingLost(false); }
   }
+  function changeStatus(value: ReturnQuery["status"]) {
+    setStatus(value); setOverdue("ALL"); setPage(1);
+  }
+  function confirmReopen(id: string | null, version: number | null | undefined, book: string) {
+    if (!id || version == null || account.role !== "SUPER_ADMIN") return;
+    setReopenReason(""); setReopenError(null); setReopenTarget({ id, version, book });
+  }
+  async function reopen() {
+    if (!reopenTarget || account.role !== "SUPER_ADMIN" || reopening || reopenReason.trim().length < 3) return;
+    setReopening(true); setReopenError(null);
+    try {
+      const { id, version } = reopenTarget;
+      const { data: updated } = receiptBookResponseSchema.parse(await receiptRequest(`/api/v1/receipt-entry/${id}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "REOPEN", version, page: 1, reason: reopenReason.trim() }),
+      }));
+      for (const prefix of ["returns:", `receipts:book:${id}:`, "receipts:queue:", "receipts:donors:", "edition-summary:",
+        "assignments:query:", `assignments:detail:${updated.header.returned.assignmentId}`, "books:query:", "leftovers:", "flags:"]) {
+        cache.invalidate(`${account.id}:${prefix}`);
+      }
+      setReopenTarget(null);
+      router.push(`/receipt-entry/${id}`);
+    } catch (error) { setReopenError(receiptError(error)); }
+    finally { setReopening(false); }
+  }
   return <AppShell account={account} headerTitle="returnsScreen" sampleData={false} search={search} onSearchChange={setSearch}
     backLabel={focused ? "submissionBackToMain" : undefined} onBack={focused ? backToOverview : undefined}>
     <div className="mb-6 flex items-center justify-between gap-4"><div><h1 className="text-3xl font-bold tracking-tight">{focused ? fundraiserName : t("returnsScreen")}</h1><p className="mt-2 text-sm text-muted-foreground">{t(focused ? "submissionFundraiserBooksHelp" : "submissionDescription")}</p></div>
@@ -195,16 +238,16 @@ export function ReturnsScreen({ account }: { account: Account }) {
           <option value="">{t("booksAllOptions")}</option>{editions.filter((edition) => bookType === "ALL" || edition.bookType === bookType).map((edition) =>
             <option key={edition.id} value={edition.id}>{language === "ur" ? edition.nameUr : edition.nameEn}</option>)}</select></div>
       <div className="min-w-0"><label htmlFor="submission-status" className="mb-2 block text-xs font-semibold">{t("status")}</label>
-        <select id="submission-status" className="min-h-[47px] w-full rounded-xl border border-border bg-card px-3 text-xs" value={tab === "OPEN" && overdue === "OVERDUE" && status === "ALL" ? "OVERDUE" : status} onChange={(event) => { setStatus(event.target.value as ReturnQuery["status"]); setOverdue("ALL"); setPage(1); }}>
+        <select id="submission-status" className="min-h-[47px] w-full rounded-xl border border-border bg-card px-3 text-xs" value={tab === "OPEN" && overdue === "OVERDUE" && status === "ALL" ? "OVERDUE" : status} onChange={(event) => changeStatus(event.target.value as ReturnQuery["status"])}>
           <option value="ALL">{t("booksAllOptions")}</option>
-          {tab === "OPEN" ? <><option value="NOT_STARTED">{t("submissionNotStarted")}</option><option value="IN_PROGRESS">{t("submissionInProgress")}</option><option value="OVERDUE">{t("assignOverdue")}</option></>
+          {tab === "OPEN" ? <><option value="NOT_STARTED">{t("submissionNotStarted")}</option><option value="IN_PROGRESS">{t("submissionInProgress")}</option><option value="CLOSED">{t("booksClosed")}</option><option value="REOPENED">{t("submissionStatusReopened")}</option><option value="OVERDUE">{t("assignOverdue")}</option></>
             : <><option value="IN_PROGRESS">{t("submissionInProgress")}</option><option value="RECONCILED">{t("returnsReconciled")}</option><option value="FLAGGED">{t("booksFlagged")}</option></>}
         </select></div>
       {collectorId && <div className="col-span-4"><Button size="small" variant="outline" onClick={backToOverview}>{t("submissionAllFundraisers")}</Button></div>}
     </Card>
     {query.error != null && <p className="mb-4 text-sm text-[var(--danger)]" role="alert">{t(booksError(query.error))}</p>}
     {lossNotice && <p className="mb-4 rounded-xl bg-accent px-4 py-3 text-sm text-primary" role="status">{t("bookLostSuccess")}</p>}
-    {(data || query.error == null) && <SubmissionSummary summary={data?.meta.summary} tab={tab} />}
+    {(data || query.error == null) && <SubmissionSummary summary={data?.meta.summary} tab={tab} status={status} onStatusChange={changeStatus} />}
     {loading && data && <p className="mb-3 text-xs text-muted-foreground" role="status">{t("usersUpdating")}</p>}
     {!data && loading && <SubmissionListSkeleton />}
     {tab === "OPEN" && !collectorId && data && <p className="mb-3 text-xs text-muted-foreground">{t("submissionPreviewHelp")}</p>}
@@ -232,17 +275,21 @@ export function ReturnsScreen({ account }: { account: Account }) {
           <td><span className="block whitespace-nowrap">{row.assignment.number}</span><span className="mt-1 block whitespace-nowrap text-[11px] text-muted-foreground">{t("assignReturnDate")}: {row.assignment.expectedReturnDate}</span></td>
           <td className="whitespace-nowrap font-semibold tabular-nums text-primary">{row.enteredReceiptCount > 0 ? displayMoney(row.collectedPaise, language) : "—"}</td>
           <td className="whitespace-nowrap font-semibold tabular-nums">{row.enteredReceiptCount > 0 ? displayMoney(row.collectedCommissionPaise, language) : "—"}</td>
-          <td><Badge tone={row.submissionId ? "warning" : row.assignment.expectedReturnDate < indiaToday() ? "danger" : "neutral"}>{t(row.submissionId ? "submissionInProgress" : row.assignment.expectedReturnDate < indiaToday() ? "assignOverdue" : "booksAssigned")}</Badge></td>
-          <td><div className="flex flex-wrap items-center gap-2">{row.submissionId ? <Button asChild size="small" variant="outline"><Link href={`/receipt-entry/${row.submissionId}`}>{t("submissionResume")}</Link></Button>
+          <td><div className="flex flex-wrap items-center gap-2"><Badge tone={row.submissionStatus === "CLOSED" ? "success" : row.submissionId ? "warning" : row.assignment.expectedReturnDate < indiaToday() ? "danger" : "neutral"}>
+            {t(row.submissionStatus === "CLOSED" ? "booksClosed" : row.submissionStatus === "REOPENED" ? "submissionStatusReopened" : row.submissionId ? "submissionInProgress" : row.assignment.expectedReturnDate < indiaToday() ? "assignOverdue" : "booksAssigned")}</Badge>
+            {row.submissionStatus === "CLOSED" && account.role === "SUPER_ADMIN" && <Button size="small" variant="outline" onClick={() => confirmReopen(row.submissionId, row.submissionVersion, submissionBookNumber(row))}>{t("submissionReopen")}</Button>}
+          </div></td>
+          <td><div className="flex flex-wrap items-center gap-2">{row.submissionId ? <Button asChild size="small" variant="outline"><Link href={`/receipt-entry/${row.submissionId}`}>{t(row.submissionStatus === "CLOSED" ? "usersView" : "submissionResume")}</Link></Button>
             : <Button size="small" variant="outline" disabled={markingLost} onClick={() => setCurrent(row)}><ClipboardCheck size={15} />{t("submissionStart")}</Button>}
-            <Button size="small" variant="outline" className="text-[var(--danger)] hover:bg-[var(--danger-soft)]" disabled={Boolean(row.submissionId) || markingLost}
+            {row.submissionStatus !== "CLOSED" && <Button size="small" variant="outline" className="text-[var(--danger)] hover:bg-[var(--danger-soft)]" disabled={Boolean(row.submissionId) || markingLost}
               title={row.submissionId ? t("bookLostStarted") : undefined} onClick={() => { setLostBook(row); setLossReason(""); setLossError(null); setLossNotice(false); }}>
-              <BookX size={15} aria-hidden="true" />{t("bookMarkLost")}</Button>
+              <BookX size={15} aria-hidden="true" />{t("bookMarkLost")}</Button>}
           </div></td></tr>)}</tbody></table></div></Card>; })}</div>
     {tab === "RETURNED" && <div className="grid gap-3">{(data?.data as ReturnRow[] | undefined)?.map((row) => <Card key={row.id} className="flex flex-wrap items-center gap-4 p-4"><div className="min-w-40 flex-1"><strong className="block text-sm">{row.collectorName}</strong><span className="mt-1 block text-xs text-muted-foreground">{row.sourceCode} · {row.number} · {row.returnDate}</span></div>
-      <strong className="text-primary">{displayMoney(row.totalPaise, language)}</strong><Badge tone={row.receiptEntryStatus === "FLAGGED" ? "danger" : row.receiptEntryStatus === "RECONCILED" ? "success" : "warning"}>{t(row.receiptEntryStatus === "FLAGGED" ? "booksFlagged" : row.receiptEntryStatus === "RECONCILED" ? "returnsReconciled" : "submissionInProgress")}</Badge>
+      <strong className="text-primary">{displayMoney(row.totalPaise, language)}</strong><Badge tone={row.unused ? "neutral" : row.receiptEntryStatus === "FLAGGED" ? "danger" : row.finalized ? "success" : "warning"}>{t(row.unused ? "booksNotUsed" : row.receiptEntryStatus === "FLAGGED" ? "booksFlagged" : row.finalized ? "booksClosed" : row.reopened ? "submissionStatusReopened" : "submissionInProgress")}</Badge>
+      {row.finalized && account.role === "SUPER_ADMIN" && <Button size="small" variant="outline" onClick={() => confirmReopen(row.id, row.submissionVersion, row.sourceCode)}>{t("submissionReopen")}</Button>}
       <Button size="small" variant="outline" onClick={() => setViewingCertificate({ assignmentId: row.assignmentId, scope: "ASSIGNMENT" })}><Award size={15} aria-hidden="true" />{t("certificateView")}</Button>
-      <Button asChild size="small" variant="outline"><Link href={`/receipt-entry/${row.id}`}>{t("submissionResume")}</Link></Button></Card>)}</div>}
+      <Button asChild size="small" variant="outline"><Link href={`/receipt-entry/${row.id}`}>{t(row.finalized ? "usersView" : "submissionResume")}</Link></Button></Card>)}</div>}
     {!loading && data?.data.length === 0 && <Card className="p-10 text-center text-sm text-muted-foreground">{t(tab === "OPEN" ? "returnsEmptyOpen" : "submissionEmptyHistory")}</Card>}
     {data && <div className="flex items-center justify-between py-5 text-xs"><span>{t("usersPage")} {data.meta.page}/{Math.max(1, Math.ceil(data.meta.total / data.meta.pageSize))} · {data.meta.total} {t(tab === "OPEN" ? collectorId ? "assignBookCount" : "peopleCollectors" : "submissionHistory")}</span><div className="flex gap-2">
       <Button size="small" variant="outline" disabled={loading || data.meta.page <= 1} onClick={() => setPage(data.meta.page - 1)}>{t("usersPrevious")}</Button><Button size="small" variant="outline" disabled={loading || data.meta.page * data.meta.pageSize >= data.meta.total} onClick={() => setPage(data.meta.page + 1)}>{t("usersNext")}</Button></div></div>}
@@ -250,6 +297,14 @@ export function ReturnsScreen({ account }: { account: Account }) {
       {current && <ReturnForm key={current.id} account={account} current={current} onBusyChange={setBusy} onSaved={saved} />}</Dialog>
     <Dialog open={viewingCertificate !== null} onOpenChange={(open) => { if (!open) setViewingCertificate(null); }} title={t("certificateTitle")} description={t(viewingCertificate?.scope === "FUNDRAISER" ? "certificateFundraiserHelp" : "certificateHelp")} className="w-[min(900px,calc(100vw-2rem))]">
       {viewingCertificate && <AuthorizationCertificateView key={`${viewingCertificate.scope}:${viewingCertificate.fundraiserId ?? viewingCertificate.assignmentId}`} accountId={account.id} {...viewingCertificate} />}
+    </Dialog>
+    <Dialog open={reopenTarget !== null} busy={reopening} onOpenChange={(open) => { if (!open) setReopenTarget(null); }} title={t("submissionReopen")} description={t("submissionReopenHelp")}>
+      <p className="mt-3 text-sm font-semibold">{reopenTarget?.book}</p>
+      <label htmlFor="return-reopen-reason" className="mb-2 mt-3 block text-xs">{t("submissionReason")}</label>
+      <textarea id="return-reopen-reason" rows={3} maxLength={1000} disabled={reopening} value={reopenReason}
+        onChange={(event) => setReopenReason(event.target.value)} className="w-full rounded-xl border border-border bg-card p-3 text-sm" />
+      {reopenError && <p role="alert" className="mt-2 text-xs text-[var(--danger)]">{t(reopenError)}</p>}
+      <div className="mt-4 flex justify-end"><Button loading={reopening} disabled={reopenReason.trim().length < 3} onClick={() => { void reopen(); }}>{t("submissionReopen")}</Button></div>
     </Dialog>
     <Dialog open={lostBook !== null} busy={markingLost} onOpenChange={(open) => { if (!open) setLostBook(null); }} title={t("bookMarkLost")} description={t("bookLostHelp")}>
       {lostBook && <div className="space-y-4">

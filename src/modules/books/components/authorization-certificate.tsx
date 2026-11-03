@@ -27,6 +27,9 @@ const importantNote = {
   ur: "یہ سند ادارہ کی ملکیت ہے۔ ادارہ کسی بھی وقت اس سند کو منسوخ،\nمعطل یا واپس لینے کا حق محفوظ رکھتا ہے۔"
 } as const;
 
+const frontBookCount = 10;
+const continuationBookCount = 40;
+
 function OrnamentalFrame({ horizontal = false, bandHeight = 44, className }: { horizontal?: boolean; bandHeight?: number; className: string }) {
   const patternId = `certificate-engraved-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   return <svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" className={`pointer-events-none select-none ${className}`}>
@@ -49,29 +52,27 @@ export function AuthorizationCertificateView({ accountId, assignmentId, scope = 
   accountId: string; assignmentId: string; scope?: CertificateScope; fundraiserId?: string;
 }) {
   const { t } = useLanguage(); const cache = usePageDataCache();
-  const printArea = useRef<HTMLDivElement>(null);
   const printDocument = useRef<HTMLDivElement>(null);
   const [printing, setPrinting] = useState(false);
+  const [side, setSide] = useState(0);
   const fitPrint = useCallback(() => {
-    const area = printArea.current; const content = printDocument.current;
-    const certificate = content?.querySelector("article");
-    if (!area || !content || !certificate) return;
-    const width = area.clientWidth - 2; const height = area.clientHeight - 2;
-    if (width <= 0 || height <= 0) return;
-    content.style.transform = "none";
-    content.style.width = `${width}px`;
-    certificate.style.minHeight = "0";
-    let scale = 1;
-    // Reflow wide content before scaling so long book lists do not produce a
-    // narrow certificate centered inside the A4 page.
-    for (let pass = 0; pass < 6; pass += 1) {
-      if (content.scrollHeight * scale <= height) break;
-      scale = Math.min(scale, height / content.scrollHeight);
-      content.style.width = `${width / scale}px`;
+    for (const area of printDocument.current?.querySelectorAll<HTMLElement>("[data-certificate-print-area]") ?? []) {
+      const content = area.querySelector<HTMLElement>("[data-certificate-print-content]");
+      if (!content) continue;
+      const width = area.clientWidth - 1; const height = area.clientHeight - 2;
+      if (width <= 0 || height <= 0) continue;
+      content.style.removeProperty("zoom");
+      content.style.width = `${width}px`;
+      let scale = 1;
+      // Fit the book and detail area only. The frame and footer stay in the page layout.
+      for (let pass = 0; pass < 6; pass += 1) {
+        const renderedHeight = content.getBoundingClientRect().height;
+        if (renderedHeight <= height) break;
+        scale *= height / renderedHeight;
+        content.style.setProperty("zoom", String(scale));
+        content.style.width = `${width / scale}px`;
+      }
     }
-    certificate.style.minHeight = `${height / scale}px`;
-    content.style.transformOrigin = "top left";
-    content.style.transform = `scale(${scale})`;
   }, []);
   useEffect(() => {
     window.addEventListener("beforeprint", fitPrint);
@@ -98,9 +99,21 @@ export function AuthorizationCertificateView({ accountId, assignmentId, scope = 
     `/api/v1/book-assignments/${assignmentId}/certificate?scope=${scope}`,
   )).data, [assignmentId, scope]);
   const query = usePageQuery(key, load);
-  const pending = !query.data || query.stale;
+  const certificateData = query.data;
+  const pending = !certificateData || query.stale;
+  const books = certificateData?.books ?? [];
+  const pages = [books.slice(0, frontBookCount)];
+  for (let start = frontBookCount; start < books.length; start += continuationBookCount) {
+    pages.push(books.slice(start, start + continuationBookCount));
+  }
+  const visibleSide = Math.min(side, pages.length - 1);
   return <div>
     <div className="mb-3 flex flex-wrap items-center justify-end gap-3">
+      {!pending && query.error == null && pages.length > 1 && <div className="me-auto flex flex-wrap items-center gap-2">
+        <Button variant="outline" size="small" disabled={visibleSide === 0} onClick={() => setSide(visibleSide - 1)}>Previous side</Button>
+        <span aria-live="polite" className="text-xs text-muted-foreground">{visibleSide === 0 ? "Front" : visibleSide === 1 ? "Back" : "Continuation"} · {visibleSide + 1}/{pages.length}</span>
+        <Button variant="outline" size="small" disabled={visibleSide === pages.length - 1} onClick={() => setSide(visibleSide + 1)}>Next side</Button>
+      </div>}
       <div className="flex gap-2">
         <Button variant="outline" size="icon" aria-label={t("usersRefresh")} loading={query.loading} onClick={() => cache.invalidate(key)}><RefreshCw size={16} /></Button>
         <Button variant="outline" size="small" loading={printing} disabled={pending || query.error != null} onClick={() => { void printCertificate(); }}><Printer size={16} />{t("assignPrint")}</Button>
@@ -112,13 +125,13 @@ export function AuthorizationCertificateView({ accountId, assignmentId, scope = 
       <div className="grid grid-cols-2 gap-4">{Array.from({ length: 6 }, (_, i) => <div key={i} className="h-12 animate-pulse rounded-lg bg-muted" />)}</div>
       <div className="h-48 animate-pulse rounded-xl bg-muted" />
     </div>}
-    {!pending && query.data && query.error == null && <>
-      {query.data.historical && <p className="mb-3 rounded-xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">{t("certificateHistorical")}</p>}
-      <Certificate data={query.data} />
-      {createPortal(<div id="authorization-certificate-print-root" aria-hidden="true" className="pointer-events-none invisible fixed -left-[10000px] top-0 box-border h-[296mm] w-[210mm] overflow-hidden bg-white p-[8mm] print:visible print:static print:m-0 print:break-inside-avoid print:rounded-none">
+    {!pending && certificateData && query.error == null && <>
+      {certificateData.historical && <p className="mb-3 rounded-xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">{t("certificateHistorical")}</p>}
+      <Certificate data={certificateData} books={pages[visibleSide]} side={visibleSide} pageCount={pages.length} />
+      {createPortal(<div ref={printDocument} id="authorization-certificate-print-root" aria-hidden="true" className="pointer-events-none invisible fixed -left-[10000px] top-0 w-[210mm] bg-white">
         {/* Page size and printer margins require @page; certificate styling stays in Tailwind. */}
         <style>{`@media print {
-          @page { size: A4 portrait; margin: 0; }
+          @page authorization-certificate { size: A4 portrait; margin: 0; }
           body:has(> #authorization-certificate-print-root),
           html:has(#authorization-certificate-print-root) {
             margin: 0 !important; padding: 0 !important; min-width: 0 !important;
@@ -129,16 +142,20 @@ export function AuthorizationCertificateView({ accountId, assignmentId, scope = 
             display: none !important;
           }
           #authorization-certificate-print-root {
-            position: relative !important; inset: auto !important;
+            position: static !important;
             visibility: visible !important; pointer-events: auto !important;
-            margin: 0 !important; width: 210mm !important; height: 296mm !important;
-            padding: 8mm !important; box-sizing: border-box !important;
-            overflow: hidden !important; break-inside: avoid !important;
+            margin: 0 !important; width: 210mm !important;
+          }
+          #authorization-certificate-print-root > section {
+            page: authorization-certificate;
+          }
+          #authorization-certificate-print-root > section + section {
+            break-before: page;
           }
         }`}</style>
-        <div ref={printArea} className="relative h-full w-full overflow-hidden">
-          <div ref={printDocument} className="absolute left-0 top-0 w-full origin-top-left"><Certificate data={query.data} printLayout /></div>
-        </div>
+        {pages.map((pageBooks, index) => <section key={index} className="box-border h-[296mm] w-[210mm] overflow-hidden p-[8mm] print:break-inside-avoid">
+          <Certificate data={certificateData} books={pageBooks} side={index} pageCount={pages.length} printLayout />
+        </section>)}
       </div>, document.body)}
     </>}
   </div>;
@@ -151,7 +168,9 @@ function Detail({ en, ur, children, className = "" }: { en: string; ur: string; 
   </div>;
 }
 
-function Certificate({ data, printLayout = false }: { data: AuthorizationCertificate; printLayout?: boolean }) {
+function Certificate({ data, books, side, pageCount, printLayout = false }: {
+  data: AuthorizationCertificate; books: AuthorizationCertificate["books"]; side: number; pageCount: number; printLayout?: boolean;
+}) {
   const today = indiaToday();
   const status = data.status === "ACTIVE" && today > data.expiresOn ? "EXPIRED" : data.status;
   const states = {
@@ -160,13 +179,16 @@ function Certificate({ data, printLayout = false }: { data: AuthorizationCertifi
   } as const;
   const date = (value: string) => new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
   const variedValidity = data.scope === "FUNDRAISER" && data.books.some((book) => book.validFrom !== data.validFrom || book.validUntil !== data.validUntil);
-  return <article dir="ltr" lang="en" className={`relative isolate mx-auto w-full overflow-hidden border-t border-[#b49a61] bg-white font-sans text-[#173e30] [print-color-adjust:exact] [-webkit-print-color-adjust:exact] ${printLayout ? "flex max-w-none flex-col" : "max-w-[760px]"}`}>
-    <OrnamentalFrame className="absolute bottom-0 left-0 top-11 h-[calc(100%_-_44px)] w-6" />
-    <OrnamentalFrame className="absolute bottom-0 right-0 top-11 h-[calc(100%_-_44px)] w-6 -scale-x-100" />
-    <div aria-hidden="true" className="pointer-events-none absolute top-[53%] left-1/2 -z-10 w-[87%] -translate-x-1/2 -translate-y-1/2 select-none opacity-[0.045] mix-blend-multiply">
-      <img src="/images/authorization-certificate-logo.png" alt="" width={1600} height={1600} loading="eager" className="h-auto w-full object-contain" />
-    </div>
-    <header className="relative isolate grid min-h-11 grid-cols-[1fr_auto_1fr] items-center gap-3 overflow-hidden bg-[#193f30] px-5 py-1 text-white">
+  const bookOffset = side === 0 ? 0 : frontBookCount + (side - 1) * continuationBookCount;
+  const assignmentReference = data.assignmentNumber.includes(",") ? "Assignment numbers shown by book" : data.assignmentNumber;
+  const sideFrame = side === 0 ? "top-11 h-[calc(100%_-_44px)]" : "top-6 h-[calc(100%_-_24px)]";
+  return <article dir="ltr" lang="en" className={`relative isolate mx-auto flex w-full flex-col overflow-hidden border-t border-[#b49a61] bg-white font-sans text-[#173e30] [print-color-adjust:exact] [-webkit-print-color-adjust:exact] ${printLayout ? "h-full" : "max-w-[760px]"} ${!printLayout && side > 0 ? "aspect-[194/280]" : ""}`}>
+    <OrnamentalFrame className={`absolute bottom-0 left-0 w-6 ${sideFrame}`} />
+    <OrnamentalFrame className={`absolute bottom-0 right-0 w-6 -scale-x-100 ${sideFrame}`} />
+    {side === 0 && <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 flex select-none items-center justify-center opacity-[0.045] mix-blend-multiply">
+      <img src="/images/authorization-certificate-logo.png" alt="" width={1600} height={1600} loading="eager" className="h-auto w-[87%] object-contain" />
+    </div>}
+    {side === 0 ? <header className="relative isolate grid min-h-11 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 overflow-hidden bg-[#193f30] px-5 py-1 text-white">
       <OrnamentalFrame horizontal className="absolute inset-0 -z-10 h-full w-full opacity-45" />
       <div className="min-w-0"><p className="text-[7px] tracking-[0.16em] text-[#d6c58e]">CERTIFICATE NO. · <span lang="ur" dir="rtl" className="tracking-normal">سند نمبر</span></p><strong className="block text-[11px] font-semibold tracking-[0.05em]">{data.number}</strong></div>
       <div className="relative h-[34px] w-[140px] overflow-hidden mix-blend-screen">
@@ -174,8 +196,10 @@ function Certificate({ data, printLayout = false }: { data: AuthorizationCertifi
           className="absolute left-1/2 top-1/2 h-auto w-[140px] max-w-none -translate-x-1/2 -translate-y-1/2 [filter:invert(1)_sepia(1)_saturate(1.5)_brightness(0.85)]" />
       </div>
       <span className={`flex w-fit items-center justify-self-end gap-1.5 rounded-full px-3 py-1 text-[9px] ${status === "ACTIVE" ? "bg-[#edf6ee] text-[#246245]" : "bg-[#fff0ee] text-[#9e2424]"}`}><Circle size={6} fill="currentColor" aria-hidden="true" />{states[status][0]} <span lang="ur" dir="rtl" className="font-[family-name:var(--font-urdu)] text-[7px]">{states[status][1]}</span></span>
-    </header>
-    <div className={`px-8 pb-2 ${printLayout ? "flex flex-1 flex-col" : ""}`}>
+    </header> : <OrnamentalFrame horizontal bandHeight={24} className="block h-6 w-full shrink-0" />}
+    <div data-certificate-print-area={printLayout ? "" : undefined} className={`flex flex-1 flex-col items-center ${printLayout ? "min-h-0" : ""} ${side > 0 ? "justify-center" : ""}`}>
+      <div data-certificate-print-content={printLayout ? "" : undefined} className={`w-full shrink-0 px-8 ${side > 0 ? "py-3" : ""}`}>
+      {side === 0 && <>
       <div className="mx-auto grid grid-cols-[minmax(0,1fr)_176px_minmax(0,1fr)] items-center gap-x-3 gap-y-1 border-b border-[#cbbd8c] pb-3 pt-3">
         <div lang="en" dir="ltr" className="min-w-0 text-center text-[#173c63]">
           <p className="whitespace-nowrap text-[24px] font-extrabold leading-[1.1] tracking-[-0.04em]">JAMIA AL HABIB</p>
@@ -221,30 +245,33 @@ function Certificate({ data, printLayout = false }: { data: AuthorizationCertifi
           
         </div>
       </section>
+      </>}
       <section className="mt-2 rounded-lg border border-[#cbbd8c]/50 bg-[#f2efe3]/75 px-3 py-2">
-        <h4 className="mb-1.5 flex items-center justify-between gap-2 text-[7px] tracking-[0.1em] text-[#657169]"><span>RECEIPT BOOK NO. · {data.books.length}</span><span lang="ur" dir="rtl" className="font-[family-name:var(--font-urdu)] text-[8px] leading-[1.8] tracking-normal">رسید بک نمبر</span></h4>
-        <ul className="flex flex-wrap gap-x-2 gap-y-1.5">{data.books.map(book => {
+        <h4 className="mb-1.5 flex items-center justify-between gap-2 text-[7px] tracking-[0.1em] text-[#657169]"><span>RECEIPT BOOK NO. · {pageCount === 1 ? data.books.length : `${bookOffset + 1}–${bookOffset + books.length} of ${data.books.length}`}</span><span lang="ur" dir="rtl" className="font-[family-name:var(--font-urdu)] text-[8px] leading-[1.8] tracking-normal">رسید بک نمبر</span></h4>
+        <ul className="grid grid-cols-5 gap-x-2 gap-y-1.5">{books.map(book => {
           const bookStatus = book.status === "ACTIVE" && today > book.validUntil ? "EXPIRED" : book.status;
-          return <li key={book.id} className="min-w-0 max-w-full rounded-md border border-[#cbbd8c]/65 bg-white/75 px-2 py-1 text-[9px] leading-[1.3] break-words">
+          return <li key={book.id} className="min-w-0 rounded-md border border-[#cbbd8c]/65 bg-white/75 px-2 py-1 text-[9px] leading-[1.3] [overflow-wrap:anywhere]">
             <strong className="font-medium">{book.number}</strong>
             {data.scope === "FUNDRAISER" && <span className="mt-0.5 block text-[7px] text-[#657169]">{book.assignmentNumber}</span>}
             {variedValidity && <span className="mt-0.5 block text-[7px] text-[#657169]">{date(book.validFrom)} — {date(book.validUntil)}</span>}
             {bookStatus !== "ACTIVE" && (bookStatus !== status || book.validUntil !== data.validUntil) && <span className="ms-1 text-[7px] text-[#9e2424]">{states[bookStatus][0]}{data.scope === "ASSIGNMENT" && ` · ${date(book.validUntil)}`}</span>}
           </li>;
         })}</ul>
+        {side < pageCount - 1 && <p className="mt-1.5 text-right text-[8px] text-[#657169]">{side === 0 ? "Continued on the reverse" : "Continued on the next page"}</p>}
       </section>
-      <div className="mt-2 flex items-end justify-between gap-4 px-3">
+      {side === 0 && <div className="mt-2 flex items-end justify-between gap-4 px-3">
         <img src="/images/certificate-official-stamp.jpeg" alt="Official Jamia Al-Habib stamp" width={420} height={417} loading="eager" className="size-16 shrink-0 object-contain mix-blend-multiply" />
         <section className="w-[240px] max-w-[65%] text-center">
           <img src="/images/certificate-authorized-signature.jpeg" alt="Authorized signatory signature" width={1289} height={813} loading="eager" className="mx-auto h-12 w-[132px] object-contain mix-blend-multiply" />
           <div className="flex items-center justify-between gap-2 border-t border-[#40594d] pt-0.5 text-[8px]"><span>Authorized Signatory</span><span lang="ur" dir="rtl" className="font-[family-name:var(--font-urdu)] text-[7px] leading-[1.8]">مجاز دستخط کنندہ</span></div>
           <p className="mt-1 text-[9px] font-medium">Maulana Riyazat Husain Azhari</p><p className="border-b border-[#aab2a8] pb-0.5 text-[7px]">Chief Executive Officer &amp; Chief Functionary</p>
         </section>
+      </div>}
       </div>
-      <footer className={`border-t border-[#c2aa70] pt-2 ${printLayout ? "mt-auto" : "mt-2"}`}>
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-[7px] tracking-[0.07em]"><span className="break-words">{data.assignmentNumber}</span><p className="text-center text-[9px] leading-snug tracking-[0.13em] text-[#7c8c7e]">RASULPUR, JAGATSINGHPUR, ODISHA, INDIA<br />CONTACT / WHATSAPP: +91 97777 88 666</p><span className="text-end break-words">{data.number}</span></div>
-      </footer>
     </div>
-    <OrnamentalFrame horizontal bandHeight={24} className="block h-6 w-full" />
+    {side === 0 && <footer className="mx-8 mt-2 shrink-0 border-t border-[#c2aa70] pb-2 pt-2">
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-[7px] tracking-[0.07em]"><span className="break-words">{assignmentReference}</span><p className="text-center text-[9px] leading-snug tracking-[0.13em] text-[#7c8c7e]">RASULPUR, JAGATSINGHPUR, ODISHA, INDIA<br />CONTACT / WHATSAPP: +91 97777 88 666</p><span className="text-end break-words">{data.number}{pageCount > 1 && <><br />{side + 1}/{pageCount}</>}</span></div>
+    </footer>}
+    <OrnamentalFrame horizontal bandHeight={24} className="block h-6 w-full shrink-0" />
   </article>;
 }

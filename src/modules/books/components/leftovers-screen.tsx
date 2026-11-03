@@ -27,8 +27,9 @@ const LeftoverTableRow = memo(function LeftoverTableRow({ row, checked, blocked,
   return <tr className="transition-colors hover:bg-muted/40"><td><input type="checkbox" className="size-4 align-middle accent-primary disabled:cursor-not-allowed" aria-label={`${t("leftoversSelect")} ${row.code}`} checked={checked} disabled={!row.assignable || blocked}
     onChange={() => onToggle(row)} /></td><td><strong>{row.code}</strong><span className={"books-secondary block w-[fit-content] mt-[5px] text-[color:var(--muted-foreground)] text-[length:11px]"}>{t("leftoversOriginalBook")}: {row.book.bookNumber}</span>
     <span className={"books-secondary block w-[fit-content] mt-[5px] text-[color:var(--muted-foreground)] text-[length:11px]"}>{language === "ur" ? row.book.editionNameUr : row.book.editionNameEn} · {t(row.book.bookType === "TOKEN" ? "booksToken" : "booksRegular")}
-      {row.book.tokenValuePaise !== null && ` ${displayMoney(row.book.tokenValuePaise, language)}`}</span></td>
-    <td>{row.returnedByName}</td><td>{row.returnDate}</td><td><bdi dir="ltr">{row.receiptFrom}–{row.receiptTo}</bdi></td><td>{row.receiptTo - row.receiptFrom + 1}</td>
+      {row.book.tokenValuePaise !== null && ` ${displayMoney(row.book.tokenValuePaise, language)}`}</span>
+    {row.unused && <span className="mt-1 inline-block"><Badge tone="neutral">{t("booksNotUsed")}</Badge></span>}</td>
+    <td><strong className="font-medium">{row.returnedByName}</strong><span className="mt-1 block text-[11px] text-muted-foreground"><bdi>{row.previousAssignmentNumber}</bdi> · <bdi>{row.previousAssignmentDate}</bdi></span></td><td>{row.returnDate}</td><td><bdi dir="ltr">{row.receiptFrom}–{row.receiptTo}</bdi></td><td>{row.receiptTo - row.receiptFrom + 1}</td>
     <td><Badge tone={row.status === "AVAILABLE" ? "success" : row.status === "HELD" ? "danger" : "warning"}>{t(row.status === "AVAILABLE" ? "leftoversAvailable" : row.status === "HELD" ? "leftoversHeld" : "booksAssigned")}</Badge></td>
     <td><Button variant="outline" size="small" disabled={!row.assignable} onClick={() => onAssign(row)}>{t("leftoversAssign")}</Button></td></tr>;
 });
@@ -36,7 +37,9 @@ function reconcile(previous: LeftoversPage | undefined, next: LeftoversPage) {
   const prior = new Map(previous?.rows.map((row) => [row.id, row]));
   return { ...next, rows: next.rows.map((row) => {
     const old = prior.get(row.id); return old && old.updatedAt === row.updatedAt && old.book.updatedAt === row.book.updatedAt
-      && old.status === row.status && old.assignable === row.assignable ? old : row;
+      && old.status === row.status && old.assignable === row.assignable && old.unused === row.unused
+      && old.returnedByName === row.returnedByName && old.previousAssignmentNumber === row.previousAssignmentNumber
+      && old.previousAssignmentDate === row.previousAssignmentDate ? old : row;
   }) };
 }
 export function LeftoversScreen({ account }: { account: Account }) {
@@ -63,7 +66,7 @@ export function LeftoversScreen({ account }: { account: Account }) {
     cache.invalidate(scope); cache.invalidate(`${account.id}:assignments:query:`); cache.invalidate(`${account.id}:returns:open:`);
     cache.invalidate(`${account.id}:books:query:`);
     if (data && (status === "ALL" || status === "AVAILABLE")) {
-      const term = search.trim().toLowerCase(); const removed = changed.filter((row) => [row.code, row.book.bookNumber, row.returnedByName].some((value) => value.toLowerCase().includes(term))).length;
+      const term = search.trim().toLowerCase(); const removed = changed.filter((row) => [row.code, row.book.bookNumber, row.returnedByName, row.previousAssignmentNumber].some((value) => value.toLowerCase().includes(term))).length;
       const rows = status === "AVAILABLE" ? data.rows.filter((row) => !changedIds.has(row.id)) : data.rows.map((row) => changedIds.has(row.id)
         ? { ...row, status: "ASSIGNED" as const, assignable: false, book: updatedBooks.get(row.book.id) ?? row.book, updatedAt: detail.assignment.updatedAt } : row);
       cache.setQueryData(key, { ...data, rows, total: Math.max(0, data.total - (status === "AVAILABLE" ? removed : 0)) });
@@ -93,7 +96,7 @@ export function LeftoversScreen({ account }: { account: Account }) {
     {query.error != null && <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8] error"} role="alert">{t(booksError(query.error))}</p>}
     {data && data.rows.length > 0 && <Card className="overflow-hidden"><div className="overflow-x-auto [scrollbar-width:thin]"><table className="w-full min-w-[1100px] table-fixed border-collapse text-xs [&_:is(th,td)]:px-4 [&_:is(th,td)]:text-start [&_:is(th,td)]:align-middle [&_th]:whitespace-nowrap [&_th]:bg-muted/60 [&_th]:py-3.5 [&_th]:text-[11px] [&_th]:font-semibold [&_th]:text-muted-foreground [&_td]:border-t [&_td]:border-border [&_td]:py-4 [&_td]:leading-relaxed [&_:is(th,td):first-child]:text-center [&_:is(th,td):nth-child(6)]:text-center [&_:is(th,td):last-child]:text-center">
       <colgroup><col className="w-20" /><col /><col className="w-[17%]" /><col className="w-[12%]" /><col className="w-[12%]" /><col className="w-36" /><col className="w-32" /><col className="w-32" /></colgroup>
-      <thead><tr><th scope="col">{t("leftoversSelect")}</th><th scope="col">{t("leftoversCode")}</th><th scope="col">{t("leftoversReturnedBy")}</th><th scope="col">{t("returnsDate")}</th>
+      <thead><tr><th scope="col">{t("leftoversSelect")}</th><th scope="col">{t("leftoversCode")}</th><th scope="col">{t("leftoversPreviousFundraiser")}</th><th scope="col">{t("returnsDate")}</th>
         <th scope="col">{t("booksReceiptRange")}</th><th scope="col">{t("returnsRemaining")}</th><th scope="col">{t("status")}</th><th scope="col">{t("leftoversAssign")}</th></tr></thead>
       <tbody>{data.rows.map((row) => <LeftoverTableRow key={row.id} row={row} checked={selected.some((item) => item.id === row.id)}
         blocked={!selected.some((item) => item.id === row.id) && (selected.length >= 150 || selected.some((item) => item.book.id === row.book.id))} onToggle={toggle} onAssign={assign} />)}</tbody></table></div></Card>}
