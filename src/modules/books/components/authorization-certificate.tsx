@@ -102,7 +102,8 @@ export function AuthorizationCertificateView({ accountId, assignmentId, scope = 
   const certificateData = query.data;
   const pending = !certificateData || query.stale;
   const books = certificateData?.books ?? [];
-  const pages = [books.slice(0, frontBookCount)];
+  const frontBooks = books.slice(0, frontBookCount);
+  const pages = [frontBooks];
   for (let start = frontBookCount; start < books.length; start += continuationBookCount) {
     pages.push(books.slice(start, start + continuationBookCount));
   }
@@ -127,7 +128,7 @@ export function AuthorizationCertificateView({ accountId, assignmentId, scope = 
     </div>}
     {!pending && certificateData && query.error == null && <>
       {certificateData.historical && <p className="mb-3 rounded-xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">{t("certificateHistorical")}</p>}
-      <Certificate data={certificateData} books={pages[visibleSide]} side={visibleSide} pageCount={pages.length} />
+      <Certificate data={certificateData} books={pages[visibleSide] ?? frontBooks} side={visibleSide} pageCount={pages.length} />
       {createPortal(<div ref={printDocument} id="authorization-certificate-print-root" aria-hidden="true" className="pointer-events-none invisible fixed -left-[10000px] top-0 w-[210mm] bg-white">
         {/* Page size and printer margins require @page; certificate styling stays in Tailwind. */}
         <style>{`@media print {
