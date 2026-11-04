@@ -13,6 +13,7 @@ import { dashboardResponseSchema } from "@/modules/dashboard/dashboard.schema";
 import { receiptRequest } from "@/modules/receipts/receipts.client";
 import { displayMoney } from "@/modules/books/returns.schema";
 import { indiaToday } from "@/modules/books/assignments.schema";
+import { BookExportButton } from "@/modules/books/components/book-export-button";
 import type { ChartInterval, DashboardData, DashboardPeriod } from "@/modules/dashboard/dashboard.schema";
 import type { MessageKey } from "@/lib/i18n/messages";
 import type { Account } from "@/modules/auth/auth.types";
@@ -79,7 +80,7 @@ export function DashboardScreen({ account, initialData, initializing = false, in
   ] satisfies { label: MessageKey; value?: number; href: string; icon: typeof BookOpen }[];
   return <AppShell account={account} sampleData={false} headerTitle="dashboard" search="" onSearchChange={() => {}} deferNotifications={initializing}>
     <div className="mb-5 flex flex-wrap items-center justify-between gap-4"><div><h1 className="text-[30px] font-bold tracking-tight">{t("dashboard")}</h1><p className="mt-2 text-sm text-muted-foreground">{t("dashboardOverview")}</p></div>
-      <div className="flex flex-wrap items-center gap-2"><label className="flex min-h-10 items-center gap-2 rounded-full border border-border bg-card px-3 text-xs"><CalendarDays size={16} aria-hidden="true" /><select aria-label={t("date")} className="border-0 bg-transparent py-2 outline-none" value={period} onChange={(event) => {
+      <div className="flex flex-wrap items-center gap-2"><BookExportButton source="SUBMISSIONS" initialStatus="OVERDUE" /><label className="flex min-h-10 items-center gap-2 rounded-full border border-border bg-card px-3 text-xs"><CalendarDays size={16} aria-hidden="true" /><select aria-label={t("date")} className="border-0 bg-transparent py-2 outline-none" value={period} onChange={(event) => {
         const value = event.target.value; if (value === "allTime" || value === "thisYear" || value === "thisMonth" || value === "lastMonth") setPeriod(value);
       }}><option value="allTime">{t("dashboardAllTime")}</option><option value="thisYear">{t("dashboardThisYear")}</option><option value="thisMonth">{t("thisMonth")}</option><option value="lastMonth">{t("lastMonth")}</option></select></label>
         <Button variant="outline" size="icon" className="rounded-full" aria-label={t("usersRefresh")} loading={query.loading} disabled={initializing} onClick={() => { setBootstrapError(""); cache.invalidate(`${scope}query:`); }}><RefreshCw size={17} /></Button>

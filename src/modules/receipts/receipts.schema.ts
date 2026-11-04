@@ -73,13 +73,16 @@ export const donorSuggestionSchema = receiptValuesSchema.pick({ donorName: true,
 export const donorSuggestionsSchema = z.object({ data: z.array(donorSuggestionSchema) });
 export type DonorSuggestion = z.infer<typeof donorSuggestionSchema>;
 
-export function receiptComplete(value: ReceiptValues, header: ReceiptHeader) {
-  if (!value.date || value.date < header.assignmentDate || value.date > header.entryEndDate) return false;
-  if (value.status !== "VALID") return value.amountPaise === 0 && Boolean(value.reasonId) && value.heads.length === 0;
-  if (value.amountPaise === null || value.amountPaise <= 0 || !value.amountWords || value.receiverName.length < 2
-    || (!value.anonymous && (value.donorName.length < 2 || !VALIDATION_PATTERNS.indianMobile.test(value.phone)))
-    || (value.phone !== "" && !VALIDATION_PATTERNS.indianMobile.test(value.phone)) || value.village.length < 2
+export function receiptComplete(value: ReceiptValues, header: ReceiptHeader, historical = false) {
+  if (value.date ? value.date < header.assignmentDate || value.date > header.entryEndDate : !historical) return false;
+  if (value.status !== "VALID") return Boolean(value.date) && value.amountPaise === 0 && Boolean(value.reasonId) && value.heads.length === 0;
+  if (value.amountPaise === null || value.amountPaise <= 0
+    || (value.phone !== "" && !VALIDATION_PATTERNS.indianMobile.test(value.phone))
     || (value.pin !== "" && !/^\d{6}$/.test(value.pin)) || !/^(?:[A-Z]{5}[0-9]{4}[A-Z])?$/.test(value.pan)) return false;
+  if (historical) return !value.heads.some((row) => row.headId)
+    || value.heads.reduce((sum, row) => sum + (row.amountPaise ?? 0), 0) === value.amountPaise;
+  if (!value.amountWords || value.receiverName.length < 2 || value.village.length < 2
+    || (!value.anonymous && (value.donorName.length < 2 || !VALIDATION_PATTERNS.indianMobile.test(value.phone)))) return false;
   if (header.bookType === "TOKEN" && value.amountPaise !== header.tokenValuePaise) return false;
   if (!value.heads.length || value.heads.some((row) => !row.categoryId || !row.headId || row.amountPaise === null || row.amountPaise <= 0)
     || value.heads.reduce((sum, row) => sum + (row.amountPaise ?? 0), 0) !== value.amountPaise) return false;

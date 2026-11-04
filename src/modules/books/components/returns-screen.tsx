@@ -16,6 +16,7 @@ import { indiaToday } from "@/modules/books/assignments.schema";
 import { bookLossResponseSchema, displayMoney, openReturnsResponseSchema, returnsResponseSchema } from "@/modules/books/returns.schema";
 import { ReturnForm } from "@/modules/books/components/return-form";
 import { AuthorizationCertificateView } from "@/modules/books/components/authorization-certificate";
+import { BookExportButton } from "@/modules/books/components/book-export-button";
 import { receiptError, receiptRequest } from "@/modules/receipts/receipts.client";
 import { receiptBookResponseSchema } from "@/modules/receipts/receipts.schema";
 import type { Account } from "@/modules/auth/auth.types";
@@ -223,10 +224,12 @@ export function ReturnsScreen({ account }: { account: Account }) {
   return <AppShell account={account} headerTitle="returnsScreen" sampleData={false} search={search} onSearchChange={setSearch}
     backLabel={focused ? "submissionBackToMain" : undefined} onBack={focused ? backToOverview : undefined}>
     <div className="mb-6 flex items-center justify-between gap-4"><div><h1 className="text-3xl font-bold tracking-tight">{focused ? fundraiserName : t("returnsScreen")}</h1><p className="mt-2 text-sm text-muted-foreground">{t(focused ? "submissionFundraiserBooksHelp" : "submissionDescription")}</p></div>
-      <Button asChild variant="outline"><Link href="/books/assignments">{t("assignBooks")}</Link></Button></div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button asChild variant="outline"><Link href="/books/assignments">{t("assignBooks")}</Link></Button>
+      </div></div>
     <div className="mb-4 flex gap-2">{(["OPEN", "RETURNED"] as const).map((value) => <Button key={value} variant={tab === value ? "default" : "outline"} onClick={() => { setTab(value); setPage(1); setCollector(""); setStatus("ALL"); setOverdue("ALL"); setEdition(""); }}>
       {t(value === "OPEN" ? "submissionAssigned" : "submissionHistory")}</Button>)}</div>
-    <Card className="mb-5 grid grid-cols-[minmax(280px,1.8fr)_minmax(130px,.75fr)_minmax(160px,1fr)_minmax(150px,.9fr)] items-end gap-3 p-4">
+    <Card className="mb-5 grid grid-cols-[minmax(180px,1.4fr)_minmax(110px,.7fr)_minmax(150px,1fr)_minmax(140px,.8fr)_auto] items-end gap-3 p-4 max-[1200px]:grid-cols-2">
       <div className="min-w-0"><label htmlFor="submission-search" className="mb-2 block text-xs font-semibold">{t("search")}</label><div className="relative"><Search className="absolute start-3 top-3.5 text-muted-foreground" size={17} aria-hidden="true" />
         <Input id="submission-search" type="search" className="ps-10" maxLength={100} placeholder={t("returnsSearch")} title={t("submissionSearchHelp")} value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /></div></div>
       <div className="min-w-0"><label htmlFor="submission-type" className="mb-2 block text-xs font-semibold">{t("mastersBookTypes")}</label>
@@ -243,7 +246,8 @@ export function ReturnsScreen({ account }: { account: Account }) {
           {tab === "OPEN" ? <><option value="NOT_STARTED">{t("submissionNotStarted")}</option><option value="IN_PROGRESS">{t("submissionInProgress")}</option><option value="CLOSED">{t("booksClosed")}</option><option value="REOPENED">{t("submissionStatusReopened")}</option><option value="OVERDUE">{t("assignOverdue")}</option></>
             : <><option value="IN_PROGRESS">{t("submissionInProgress")}</option><option value="RECONCILED">{t("returnsReconciled")}</option><option value="FLAGGED">{t("booksFlagged")}</option></>}
         </select></div>
-      {collectorId && <div className="col-span-4"><Button size="small" variant="outline" onClick={backToOverview}>{t("submissionAllFundraisers")}</Button></div>}
+      <BookExportButton source="SUBMISSIONS" filters={{ search: search.trim(), collectorId, bookType, editionId, tab }} initialStatus={overdue === "OVERDUE" ? "OVERDUE" : status} />
+      {collectorId && <div className="col-span-full"><Button size="small" variant="outline" onClick={backToOverview}>{t("submissionAllFundraisers")}</Button></div>}
     </Card>
     {query.error != null && <p className="mb-4 text-sm text-[var(--danger)]" role="alert">{t(booksError(query.error))}</p>}
     {lossNotice && <p className="mb-4 rounded-xl bg-accent px-4 py-3 text-sm text-primary" role="status">{t("bookLostSuccess")}</p>}

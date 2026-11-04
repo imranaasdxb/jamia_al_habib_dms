@@ -48,7 +48,7 @@ export function returnDatabaseFailure(error: unknown, stage?: string) {
 }
 
 const literalLike = (term: string) => `%${term.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
-function submissionSearch(query: ReturnQuery) {
+export function submissionSearch(query: ReturnQuery) {
   const term = query.search.replace(/\s+/g, " ").trim();
   if (!term) return undefined;
   const book = /^(?:ed[-\s]?(\d{1,4})[-\s]+)?(?:t[-\s]?(\d{1,3})[-\s]+)?book\s*(?:(?:no|number)\.?\s*)?[#:-]?\s*(\d{1,10})(?:\s*\/\s*(\d{1,10}))?$/i.exec(term);
@@ -137,7 +137,7 @@ const serializeReturn = (row: typeof bookReturns.$inferSelect) => returnRowSchem
   unused: row.finalizedAt !== null && row.outcome === "PARTLY_USED" && row.receiptEntryStatus === "RECONCILED" && row.receiptsUsed === 0 && row.lastUsed === null,
   finalized: row.finalizedAt !== null, reopened: row.finalizedAt === null && row.reopenedAt !== null, submissionVersion: row.receiptEntryVersion });
 const liveCase = and(isNull(bookCases.closedAt), isNull(books.deletedAt), isNull(bookAssignments.deletedAt), inArray(books.status, ["ASSIGNED", "LEFTOVER_ASSIGNED"]));
-const listedCase = and(isNull(books.deletedAt), isNull(bookAssignments.deletedAt),
+export const listedCase = and(isNull(books.deletedAt), isNull(bookAssignments.deletedAt),
   or(liveCase, and(isNotNull(bookCases.closedAt), isNotNull(bookReturns.finalizedAt),
     sql`not (${bookReturns.outcome}='PARTLY_USED' and ${bookReturns.receiptEntryStatus}='RECONCILED'
       and ${bookReturns.receiptsUsed}=0 and ${bookReturns.lastUsed} is null)`)));

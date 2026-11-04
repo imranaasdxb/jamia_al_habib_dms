@@ -5,13 +5,13 @@ import { RECEIPT_REASON_OPTIONS } from "@/modules/receipts/receipt-options";
 import type { MessageKey } from "@/lib/i18n/messages";
 
 type Option = { id: string; nameEn: string; nameUr: string };
-export function ReceiptOptionSelect({ label, value, options, onChange, currentName, disabled = false, loading = false }: {
+export function ReceiptOptionSelect({ label, value, options, onChange, currentName, disabled = false, loading = false, required = true }: {
   label: MessageKey; value: string; options: readonly Option[]; onChange: (value: string) => void;
-  currentName?: string; disabled?: boolean; loading?: boolean;
+  currentName?: string; disabled?: boolean; loading?: boolean; required?: boolean;
 }) {
   const { t, language } = useLanguage(); const id = useId();
-  return <div className="min-w-0"><label htmlFor={id} className="mb-1 block text-[11px] font-semibold">{t(label)} *</label>
-    <select id={id} required disabled={disabled || loading} aria-busy={loading}
+  return <div className="min-w-0"><label htmlFor={id} className="mb-1 block text-[11px] font-semibold">{t(label)}{required && " *"}</label>
+    <select id={id} required={required} disabled={disabled || loading} aria-busy={loading}
       className="w-full min-h-9 rounded-lg border border-border bg-card px-2.5 py-2 text-xs disabled:opacity-60"
       value={value} onChange={(event) => onChange(event.target.value)}>
       <option value="">{t(loading ? "working" : "booksChooseOption")}</option>

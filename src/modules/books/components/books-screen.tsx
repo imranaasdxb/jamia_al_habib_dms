@@ -11,12 +11,18 @@ import { Card } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { BookMasterSelect } from "@/modules/books/components/book-master-select";
+import { BookExportButton } from "@/modules/books/components/book-export-button";
 import { booksError, booksRequest, bookStatusLabels } from "@/modules/books/books.client";
-import { booksResponseSchema } from "@/modules/books/books.schema";
+import { BOOK_STOCK_FILTERS, booksResponseSchema } from "@/modules/books/books.schema";
 import { formatCurrency } from "@/lib/utils";
 import type { Account } from "@/modules/auth/auth.types";
 import type { BookRow, BooksPage, BooksQuery, BookStockSummary } from "@/modules/books/books.schema";
 import type { MessageKey } from "@/lib/i18n/messages";
+
+const stockStatusLabels: Record<BooksQuery["status"], MessageKey> = {
+  ALL: "booksAllOptions", OPEN: "bookStockOpen", CLOSED: "booksClosed", WITH_FUNDRAISER: "booksAssigned",
+  LEFTOVER: "leftoversScreen", REOPENED: "submissionStatusReopened",
+};
 
 function reconcile(previous: BooksPage | undefined, next: BooksPage): BooksPage {
   const existing = new Map(previous?.rows.map((row) => [row.id, row]));
@@ -32,7 +38,7 @@ const StockRow = memo(function StockRow({ row, onView }: { row: BookRow; onView:
     <td>{language === "ur" ? row.editionNameUr : row.editionNameEn}</td>
     <td>{t(row.bookType === "TOKEN" ? "booksToken" : "booksRegular")}{row.tokenValuePaise !== null && <span className={"books-secondary block w-[fit-content] mt-[5px] text-[color:var(--muted-foreground)] text-[length:11px]"}>{formatCurrency(row.tokenValuePaise / 100)}</span>}</td>
     <td><bdi dir="ltr">{row.receiptFrom} – {row.receiptTo}</bdi></td><td>{row.totalReceipts}</td>
-    <td><Badge tone={row.status === "IN_STOCK" || row.status === "CLOSED" ? "success" : row.status === "FLAGGED" || row.status === "LOST" ? "danger" : "warning"}>{t(bookStatusLabels[row.status])}</Badge></td>
+    <td><Badge tone={row.status === "IN_STOCK" || row.status === "CLOSED" ? "success" : row.status === "FLAGGED" || row.status === "LOST" ? "danger" : "warning"}>{t(row.reopened ? "submissionStatusReopened" : bookStatusLabels[row.status])}</Badge></td>
     <td><Button variant="ghost" size="icon" aria-label={t("booksView")} title={t("booksView")} onClick={() => onView(row)}><Eye size={17} /></Button></td></tr>;
 });
 function StockSummaryCards({ summary, bookType }: { summary: BookStockSummary | undefined; bookType: BooksQuery["bookType"] }) {
@@ -82,10 +88,11 @@ export function BooksScreen({ account }: { account: Account }) {
   const [editionId, setEdition] = usePageState(`${scope}filters:edition`, "");
   const [bookType, setBookType] = usePageState<BooksQuery["bookType"]>(`${scope}filters:type`, "ALL");
   const [tokenValue, setTokenValue] = usePageState<BooksQuery["tokenValue"]>(`${scope}filters:token`, "");
+  const [status, setStatus] = usePageState<BooksQuery["status"]>(`${scope}filters:status`, "ALL");
   const [page, setPage] = usePageState(`${scope}filters:page`, 1);
   const [viewing, setViewing] = useState<BookRow | null>(null);
-  const params = new URLSearchParams({ search: search.trim(), editionId, bookType, tokenValue, page: String(page) }).toString();
-  const key = `${scope}query:stock-v2:${params}`;
+  const params = new URLSearchParams({ search: search.trim(), editionId, bookType, tokenValue, status, page: String(page) }).toString();
+  const key = `${scope}query:stock-v3:${params}`;
   const summaryKey = `${scope}query:stock-summary:${bookType}:${editionId}:${tokenValue}`;
   const subscribeSummary = useCallback((notify: () => void) => {
     const entry = cache.entry(summaryKey);
@@ -111,18 +118,18 @@ export function BooksScreen({ account }: { account: Account }) {
   const selectClass = "input block min-h-[47px] w-full rounded-[var(--radius-control)] border border-[var(--input)] bg-[var(--card)] px-3.5 py-3 text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50";
   function changeType(value: string) {
     if ((value !== "ALL" && value !== "REGULAR" && value !== "TOKEN") || value === bookType) return;
-    if (bookType !== "ALL") cache.write(`${scope}selection:${bookType}`, { search, editionId, tokenValue, page });
-    const previous = cache.read<Pick<BooksQuery, "search" | "editionId" | "tokenValue" | "page">>(
-      `${scope}selection:${value}`, { search: "", editionId: "", tokenValue: "", page: 1 });
+    if (bookType !== "ALL") cache.write(`${scope}selection:${bookType}`, { search, editionId, tokenValue, status, page });
+    const previous = cache.read<Pick<BooksQuery, "search" | "editionId" | "tokenValue" | "status" | "page">>(
+      `${scope}selection:${value}`, { search: "", editionId: "", tokenValue: "", status: "ALL", page: 1 });
     setBookType(value); setSearch(previous.search); setEdition(previous.editionId);
-    setTokenValue(value === "TOKEN" ? previous.tokenValue : ""); setPage(previous.page);
+    setTokenValue(value === "TOKEN" ? previous.tokenValue : ""); setStatus(previous.status ?? "ALL"); setPage(previous.page);
   }
   const view = useCallback((row: BookRow) => setViewing(row), []);
   return <AppShell account={account} headerTitle="books" sampleData={false} search={search} onSearchChange={setSearch}>
     <div className={"page-header flex justify-between items-center gap-[20px] mb-[22px]"}><div><h1 className={"page-title text-[length:34px] font-bold tracking-[-1.3px] [html[lang='ur']_&]:tracking-0"}>{t("booksStock")}</h1><p className={"page-subtitle text-[color:var(--muted-foreground)] mt-[7px]"}>{t("booksEditionStockHelp")}</p></div>
       <div className={"header-actions flex items-center gap-[12px]"}><Button asChild variant="outline"><Link href="/books/assignments">{t("assignBooks")}</Link></Button>
       </div></div>
-    <Card className={"books-filter-bar grid grid-cols-[minmax(220px,_1.6fr)_repeat(3,_minmax(140px,_1fr))_42px] gap-[14px] items-end p-[18px] max-[1200px]:grid-cols-[repeat(2,_minmax(0,_1fr))]"}><div className={"books-search [&_>_div]:relative [&_svg]:absolute [&_svg]:start-[13px] [&_svg]:top-[15px] [&_svg]:text-[color:var(--muted-foreground)] [&_.input]:ps-[39px]"}><label className={"field-label block text-[length:12px] font-semibold mb-[8px]"} htmlFor="stock-search">{t("search")}</label>
+    <Card className="grid grid-cols-[minmax(160px,1.3fr)_minmax(110px,.8fr)_minmax(140px,1fr)_minmax(85px,.55fr)_minmax(125px,.8fr)_auto] items-end gap-3 p-[18px] max-[1280px]:grid-cols-3"><div className={"books-search [&_>_div]:relative [&_svg]:absolute [&_svg]:start-[13px] [&_svg]:top-[15px] [&_svg]:text-[color:var(--muted-foreground)] [&_.input]:ps-[39px]"}><label className={"field-label block text-[length:12px] font-semibold mb-[8px]"} htmlFor="stock-search">{t("search")}</label>
       <div><Search size={17} aria-hidden="true" /><Input id="stock-search" type="search" maxLength={100} placeholder={t("booksSearch")}
         value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} /></div></div>
       <div className="min-w-0"><label className="mb-2 block text-xs font-semibold" htmlFor="stock-type">{t("mastersBookTypes")}</label>
@@ -137,7 +144,16 @@ export function BooksScreen({ account }: { account: Account }) {
           if (value === "" || value === "10" || value === "50" || value === "100") { setTokenValue(value); setPage(1); }
         }}><option value="">{t("booksAllOptions")}</option>{["10", "50", "100"].map((value) => <option key={value} value={value}>₹{value}</option>)}</select>
       </div>
-      <Button variant="outline" size="icon" loading={loading} disabled={!ready} aria-label={t("usersRefresh")} onClick={() => { cache.invalidate(summaryKey); cache.invalidate(key); }}><RefreshCw size={17} /></Button>
+      <div className="min-w-0"><label className="mb-2 block text-xs font-semibold" htmlFor="stock-status">{t("status")}</label>
+        <select id="stock-status" className={selectClass} value={status} disabled={!ready} onChange={(event) => {
+          const value = BOOK_STOCK_FILTERS.find((option) => option === event.target.value);
+          if (value) { setStatus(value); setPage(1); }
+        }}>{BOOK_STOCK_FILTERS.map((value) => <option key={value} value={value}>{t(stockStatusLabels[value])}</option>)}</select>
+      </div>
+      <div className="flex items-center gap-2">
+        <BookExportButton source="STOCK" disabled={!ready || loading || !data?.total} filters={{ search: search.trim(), bookType, editionId, tokenValue, stockStatus: status }} />
+        <Button variant="outline" size="icon" loading={loading} disabled={!ready} aria-label={t("usersRefresh")} onClick={() => { cache.invalidate(summaryKey); cache.invalidate(key); }}><RefreshCw size={17} /></Button>
+      </div>
     </Card>
     {ready && (query.error == null || summary) && <StockSummaryCards summary={summary} bookType={bookType} />}
     <div className={"books-results flex items-center justify-between gap-[15px] text-[length:12px] min-h-[22px] my-[22px_14px]"}><span>{t("booksRegistered")} {data?.total ?? "—"}</span><span className={"muted text-[color:var(--muted-foreground)]"} role="status">{loading && t(data ? "usersUpdating" : "working")}</span></div>
@@ -166,7 +182,7 @@ export function BooksScreen({ account }: { account: Account }) {
           ["mastersTokenValues", viewing.tokenValuePaise === null ? "—" : formatCurrency(viewing.tokenValuePaise / 100)],
           ["booksReceiptRange", `${viewing.receiptFrom} – ${viewing.receiptTo}`], ["booksTotalReceipts", String(viewing.totalReceipts)],
           ["booksFaceValue", viewing.faceValuePaise === null ? "—" : formatCurrency(viewing.faceValuePaise / 100)],
-          ["status", t(bookStatusLabels[viewing.status])], ["booksEntryBy", viewing.entryByName], ["usersRemarks", viewing.remarks || "—"]] as [MessageKey, string][])
+          ["status", t(viewing.reopened ? "submissionStatusReopened" : bookStatusLabels[viewing.status])], ["booksEntryBy", viewing.entryByName], ["usersRemarks", viewing.remarks || "—"]] as [MessageKey, string][])
           .map(([label, value]) => <div key={label}><dt>{t(label)}</dt><dd>{value}</dd></div>)}
       </dl></div>}
     </Dialog>

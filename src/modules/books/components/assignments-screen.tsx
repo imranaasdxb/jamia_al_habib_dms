@@ -14,6 +14,7 @@ import { booksError, booksRequest } from "@/modules/books/books.client";
 import { assignmentsResponseSchema, indiaToday } from "@/modules/books/assignments.schema";
 import { AssignmentForm } from "@/modules/books/components/assignment-form";
 import { AssignmentSlipView } from "@/modules/books/components/assignment-slip";
+import { BookExportButton } from "@/modules/books/components/book-export-button";
 import type { Account } from "@/modules/auth/auth.types";
 import type { AssignmentDetail, AssignmentQuery, AssignmentRow, AssignmentsPage } from "@/modules/books/assignments.schema";
 import type { BooksPage } from "@/modules/books/books.schema";
@@ -76,16 +77,18 @@ export function AssignmentsScreen({ account, initialId = "", initialCode = "" }:
   }
   return <AppShell account={account} headerTitle="assignBooks" sampleData={false} search={search} onSearchChange={(value) => { setSearch(value); setPage(1); }}>
     <div className={"page-header flex justify-between items-center gap-[20px] mb-[22px]"}><div><h1 className={"page-title text-[length:34px] font-bold tracking-[-1.3px] [html[lang='ur']_&]:tracking-0"}>{t("assignBooks")}</h1><p className={"page-subtitle text-[color:var(--muted-foreground)] mt-[7px]"}>{t("assignDescription")}</p></div>
-      <div className={"header-actions flex items-center gap-[12px]"}><Button asChild variant="outline"><Link href="/books">{t("booksStock")}</Link></Button>
+      <div className={"header-actions flex flex-wrap items-center gap-[12px]"}>
+        <Button asChild variant="outline"><Link href="/books">{t("booksStock")}</Link></Button>
         <Button asChild variant="outline"><Link href="/books/returns">{t("returnsScreen")}</Link></Button>
         {account.role === "SUPER_ADMIN" && <Button asChild variant="outline"><Link href="/books/leftovers">{t("leftoversScreen")}</Link></Button>}
         <Button onClick={() => setOpen(true)}><Plus size={18} />{t("assignNew")}</Button></div></div>
     {savedNumber && <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8]"} role="status">{t("assignSaved")} <strong>{savedNumber}</strong></p>}
-    <Card className={"assignment-filters grid grid-cols-[minmax(180px,_1fr)_180px_42px] items-center gap-[12px] p-[18px] max-[650px]:grid-cols-[minmax(0,_1fr)_42px] max-[650px]:[&_>_.input:first-child]:col-[1_/_-1]"}><Input type="search" maxLength={100} aria-label={t("search")} placeholder={t("assignSearch")} value={search}
+    <Card className="mb-4 grid grid-cols-[minmax(180px,1fr)_180px_auto_42px] items-center gap-3 p-[18px] max-[850px]:grid-cols-2"><Input type="search" maxLength={100} aria-label={t("search")} placeholder={t("assignSearch")} value={search}
       onChange={(event) => { setSearch(event.target.value); setPage(1); }} />
       <select className={"input block w-full min-h-[47px] p-[12px_14px] bg-[var(--card)] [border:1px_solid_var(--input)] rounded-[var(--radius-control)] text-[color:var(--foreground)] [transition:border-color_.15s] [&::placeholder]:text-[color:var(--muted-foreground)] [&[aria-invalid='true']]:[border-color:var(--danger)]"} aria-label={t("status")} value={status} onChange={(event) => {
         const value = event.target.value; if (value === "ALL" || value === "OPEN" || value === "OVERDUE" || value === "CLOSED") { setStatus(value); setPage(1); }
       }}><option value="ALL">{t("booksAllOptions")}</option><option value="OPEN">{t("assignOpen")}</option><option value="OVERDUE">{t("assignOverdue")}</option><option value="CLOSED">{t("booksClosed")}</option></select>
+      <BookExportButton source="ASSIGNMENTS" filters={{ search: search.trim() }} initialStatus={status} />
       <Button variant="outline" size="icon" aria-label={t("usersRefresh")} loading={query.loading} onClick={() => cache.invalidate(`${scope}query:`)}><RefreshCw size={17} /></Button></Card>
     <div className={"books-results flex items-center justify-between gap-[15px] text-[length:12px] min-h-[22px] my-[22px_14px]"}><span>{t("assignRecords")} {data?.total ?? 0}</span>{loading && <span className={"muted text-[color:var(--muted-foreground)]"} role="status">{t(data ? "usersUpdating" : "working")}</span>}</div>
     {query.error != null && <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8] error"} role="alert">{t(booksError(query.error))}</p>}

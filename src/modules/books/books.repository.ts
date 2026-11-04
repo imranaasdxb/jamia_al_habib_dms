@@ -45,30 +45,49 @@ export async function bookEntryContext(page: number) {
     return { ...data, rows: data.rows.slice(0, 24), hasMore: data.rows.length > 24 };
   });
 }
+export const stockReopened = sql<boolean>`exists (select 1 from public.book_cases c join public.book_returns r on r.case_id=c.id
+  where c.book_id="books"."id" and c.closed_at is null and r.deleted_at is null and r.reopened_at is not null and r.finalized_at is null)`;
+function bookStockSearch(search: string) {
+  const term = literalLike(search);
+  const bookMatch = /^(?:book\s*(?:(?:no|number)\.?\s*)?[#:\-]?\s*)?(\d{1,10})$/i.exec(search);
+  const receiptMatch = /^receipt\s*(?:(?:no|number)\.?\s*)?[#:\-]?\s*(\d{1,10})$/i.exec(search);
+  const bookNumber = bookMatch?.[1] ? Number(bookMatch[1]) : null;
+  const receiptNumber = receiptMatch?.[1] ? Number(receiptMatch[1]) : null;
+  return bookNumber !== null
+    ? bookNumber <= 2147483647 ? or(eq(books.editionBookNumber, bookNumber),
+      and(isNull(books.editionBookNumber), or(eq(books.bookNumber, String(bookNumber)), eq(books.bookNumber, `BOOK${bookNumber}`)))) : sql`false`
+    : receiptNumber !== null
+      ? receiptNumber <= 2147483647 ? sql`int8range(${books.receiptFrom}::bigint, ${books.receiptTo}::bigint, '[]') @> ${receiptNumber}::bigint` : sql`false`
+      : search ? or(ilike(books.bookNumber, term), ilike(books.editionNameEn, term), ilike(books.editionNameUr, term)) : undefined;
+}
+function bookStockScope(query: BooksQuery) {
+  return and(isNull(books.deletedAt), query.editionId ? eq(books.editionId, query.editionId) : undefined,
+    query.bookType !== "ALL" ? eq(books.bookType, query.bookType) : undefined,
+    query.tokenValue ? eq(books.tokenValuePaise, Number(query.tokenValue) * 100) : undefined);
+}
+function bookStockStatus(status: BooksQuery["status"]) {
+  if (status === "OPEN") return eq(books.status, "IN_STOCK");
+  if (status === "CLOSED") return eq(books.status, "CLOSED");
+  if (status === "WITH_FUNDRAISER") return inArray(books.status, ["ASSIGNED", "LEFTOVER_ASSIGNED"]);
+  if (status === "LEFTOVER") return eq(books.status, "PARTLY_USED");
+  if (status === "REOPENED") return stockReopened;
+  return undefined;
+}
+export function bookStockFilters(query: BooksQuery) {
+  return and(bookStockScope(query), bookStockSearch(query.search), bookStockStatus(query.status));
+}
 export async function listBooks(query: BooksQuery) {
   return withBooksDatabase(async (tx) => {
-    const term = literalLike(query.search);
-    const bookMatch = /^(?:book\s*(?:(?:no|number)\.?\s*)?[#:\-]?\s*)?(\d{1,10})$/i.exec(query.search);
-    const receiptMatch = /^receipt\s*(?:(?:no|number)\.?\s*)?[#:\-]?\s*(\d{1,10})$/i.exec(query.search);
-    const bookNumber = bookMatch?.[1] ? Number(bookMatch[1]) : null;
-    const receiptNumber = receiptMatch?.[1] ? Number(receiptMatch[1]) : null;
-    const searchWhere = bookNumber !== null
-      ? bookNumber <= 2147483647 ? or(eq(books.editionBookNumber, bookNumber),
-        and(isNull(books.editionBookNumber), or(eq(books.bookNumber, String(bookNumber)), eq(books.bookNumber, `BOOK${bookNumber}`)))) : sql`false`
-      : receiptNumber !== null
-        ? receiptNumber <= 2147483647 ? sql`int8range(${books.receiptFrom}::bigint, ${books.receiptTo}::bigint, '[]') @> ${receiptNumber}::bigint` : sql`false`
-        : query.search ? or(ilike(books.bookNumber, term), ilike(books.editionNameEn, term), ilike(books.editionNameUr, term)) : undefined;
-    const scope = and(isNull(books.deletedAt), query.editionId ? eq(books.editionId, query.editionId) : undefined,
-      query.bookType !== "ALL" ? eq(books.bookType, query.bookType) : undefined,
-      query.tokenValue ? eq(books.tokenValuePaise, Number(query.tokenValue) * 100) : undefined);
-    const where = and(scope, searchWhere);
+    const scope = bookStockScope(query);
+    const resultFilter = and(bookStockSearch(query.search), bookStockStatus(query.status));
+    const where = and(scope, resultFilter);
     let total = 0;
     let summary: BookStockSummary | undefined;
     if (query.summary === "1" && query.editionId && query.bookType !== "ALL") {
       // Count the table matches and aggregate the selected edition in one scan.
-      // Search narrows the table only; cards continue to describe the full scope.
+      // Search and status narrow the table; cards describe the complete selected edition.
       const [result] = await tx.select({
-        total: sql<number>`count(*) filter (where ${searchWhere ?? sql`true`})::integer`,
+        total: sql<number>`count(*) filter (where ${resultFilter ?? sql`true`})::integer`,
         books: count(), available: sql<number>`count(*) filter (where ${books.status} = 'IN_STOCK')::integer`,
         assigned: sql<number>`count(*) filter (where ${books.status} in ('ASSIGNED','LEFTOVER_ASSIGNED'))::integer`,
         closed: sql<number>`count(*) filter (where ${books.status} = 'CLOSED')::integer`,
@@ -85,9 +104,9 @@ export async function listBooks(query: BooksQuery) {
     }
     const pageSize = 20;
     const page = Math.min(query.page, Math.max(1, Math.ceil(total / pageSize)));
-    const rows = await tx.select().from(books).where(where).orderBy(asc(books.bookType), asc(books.editionNumber), asc(books.editionBookNumber), asc(books.receiptFrom), asc(books.id))
+    const rows = await tx.select({ book: books, reopened: stockReopened }).from(books).where(where).orderBy(asc(books.bookType), asc(books.editionNumber), asc(books.editionBookNumber), asc(books.receiptFrom), asc(books.id))
       .limit(pageSize).offset((page - 1) * pageSize);
-    return { rows: rows.map(serialize), total, page, pageSize, ...(summary ? { summary } : {}) };
+    return { rows: rows.map(({ book, reopened }) => ({ ...serialize(book), reopened })), total, page, pageSize, ...(summary ? { summary } : {}) };
   });
 }
 async function findConflict(tx: RequestDatabase, rows: SingleBookValues[]) {

@@ -14,7 +14,7 @@ const literalLike = (term: string) => `%${term.replaceAll("\\", "\\\\").replaceA
 const openCount = sql<number>`(select count(*)::integer from public.book_cases c
   where c.assignment_id = "book_assignments"."id" and c.closed_at is null
     and not exists (select 1 from public.book_returns r where r.case_id=c.id and r.deleted_at is null and r.finalized_at is not null))`;
-const assignmentStatus = sql<string>`case when ${openCount}=0 then 'CLOSED'
+export const assignmentStatus = sql<string>`case when ${openCount}=0 then 'CLOSED'
   when "book_assignments"."expected_return_date" < (now() at time zone 'Asia/Kolkata')::date then 'OVERDUE' else 'OPEN' end`;
 const availableLeftoverCount = sql<number>`(select count(*)::integer from public.leftover_books l
   join public.book_returns r on r.id=l.return_id
@@ -49,10 +49,7 @@ export async function assignmentDefaults() {
 }
 export async function listAssignments(query: AssignmentQuery) {
   return withBooksDatabase(async (tx) => {
-    const term = literalLike(query.search);
-    const where = and(isNull(bookAssignments.deletedAt), query.collectorId ? eq(bookAssignments.collectorId, query.collectorId) : undefined,
-      query.status !== "ALL" ? sql`(${assignmentStatus}) = ${query.status}` : undefined,
-      query.search ? or(ilike(bookAssignments.number, term), ilike(bookAssignments.collectorName, term), ilike(bookAssignments.collectorCode, term), ilike(bookAssignments.phone, term)) : undefined);
+    const where = assignmentFilters(query);
     const [result] = await tx.select({ total: count(), overdue: sql<number>`count(*) filter (where ${openCount} > 0 and ${bookAssignments.expectedReturnDate} < (now() at time zone 'Asia/Kolkata')::date)::integer` }).from(bookAssignments).where(where);
     const total = result?.total ?? 0; const pageSize = 20;
     const page = Math.min(query.page, Math.max(1, Math.ceil(total / pageSize)));
@@ -60,6 +57,12 @@ export async function listAssignments(query: AssignmentQuery) {
       .orderBy(desc(bookAssignments.createdAt), asc(bookAssignments.id)).limit(pageSize).offset((page - 1) * pageSize);
     return { rows: rows.map((row) => serialize(row.assignment, row.openCount, row.availableLeftoverCount)), total, page, pageSize, overdue: result?.overdue ?? 0 };
   });
+}
+export function assignmentFilters(query: AssignmentQuery) {
+  const term = literalLike(query.search);
+  return and(isNull(bookAssignments.deletedAt), query.collectorId ? eq(bookAssignments.collectorId, query.collectorId) : undefined,
+    query.status !== "ALL" ? sql`(${assignmentStatus}) = ${query.status}` : undefined,
+    query.search ? or(ilike(bookAssignments.number, term), ilike(bookAssignments.collectorName, term), ilike(bookAssignments.collectorCode, term), ilike(bookAssignments.phone, term)) : undefined);
 }
 export async function availableBooks(search: string, assignmentDate: string, page: number, bookType?: "REGULAR" | "TOKEN", editionId?: string) {
   return withBooksDatabase(async (tx) => {
