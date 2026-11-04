@@ -22,15 +22,19 @@ function reconcile(previous: AssignmentsPage | undefined, next: AssignmentsPage)
   const previousRows = new Map(previous?.rows.map((row) => [row.id, row]));
   return { ...next, rows: next.rows.map((row) => {
     const old = previousRows.get(row.id);
-    return old && old.updatedAt === row.updatedAt && old.openCount === row.openCount ? old : row;
+    return old && old.updatedAt === row.updatedAt && old.openCount === row.openCount
+      && old.status === row.status && old.availableLeftoverCount === row.availableLeftoverCount ? old : row;
   }) };
 }
 const AssignmentTableRow = memo(function AssignmentTableRow({ row, onView, today }: { row: AssignmentRow; onView: (id: string) => void; today: string }) {
-  const { t } = useLanguage(); const overdue = row.openCount > 0 && row.expectedReturnDate < today;
+  const { t } = useLanguage();
+  const status = row.status ?? (row.openCount === 0 ? "CLOSED" : row.expectedReturnDate < today ? "OVERDUE" : "OPEN");
   return <tr><td><strong>{row.number}</strong><span className={"books-secondary block w-[fit-content] mt-[5px] text-[color:var(--muted-foreground)] text-[length:11px]"}>{row.assignmentDate}</span></td>
     <td>{row.collectorName}<span className={"books-secondary block w-[fit-content] mt-[5px] text-[color:var(--muted-foreground)] text-[length:11px]"}>{row.collectorCode}</span></td><td>{row.bookIds.length}</td><td>{row.expectedReturnDate}</td>
-    <td><Badge tone={overdue ? "danger" : row.openCount > 0 ? "warning" : "success"}>{t(overdue ? "assignOverdue" : row.openCount > 0 ? "assignOpen" : "booksClosed")}</Badge>
-      <span className={"books-secondary block w-[fit-content] mt-[5px] text-[color:var(--muted-foreground)] text-[length:11px]"}>{t("assignOpenBooks")}: {row.openCount}</span></td><td>{row.assignedByName}</td>
+    <td><Badge tone={status === "OVERDUE" ? "danger" : status === "OPEN" ? "warning" : "success"}>{t(status === "OVERDUE" ? "assignOverdue" : status === "OPEN" ? "assignOpen" : "booksClosed")}</Badge>
+      {row.openCount > 0 && <span className="mt-1 block text-[11px] text-muted-foreground">{t("assignOpenBooks")}: {row.openCount}</span>}
+      {row.availableLeftoverCount > 0 && <span className="mt-1 block text-[11px] font-medium text-primary">{t("assignLeftoversReady")}: {row.availableLeftoverCount}</span>}
+    </td><td>{row.assignedByName}</td>
     <td><Button variant="ghost" size="icon" aria-label={`${t("assignViewSlip")} ${row.number}`} onClick={() => onView(row.id)}><Eye size={17} /></Button></td></tr>;
 });
 export function AssignmentsScreen({ account, initialId = "", initialCode = "" }: { account: Account; initialId?: string; initialCode?: string }) {
@@ -42,8 +46,8 @@ export function AssignmentsScreen({ account, initialId = "", initialCode = "" }:
   const fetchData = useCallback(async (): Promise<AssignmentsPage> => {
     const result = assignmentsResponseSchema.parse(await booksRequest(`/api/v1/book-assignments?${params}`)); return { rows: result.data, ...result.meta };
   }, [params]);
-  const queryKey = `${scope}query:${params}`;
-  const query = usePageQuery(queryKey, fetchData, { enabled: !open, delay: search ? 300 : 0, reconcile });
+  const queryKey = `${scope}query:status-v2:${params}`;
+  const query = usePageQuery(queryKey, fetchData, { enabled: !open && !viewing, delay: search ? 300 : 0, reconcile });
   const data = query.data; const loading = query.loading || query.stale;
   const view = useCallback((id: string) => setViewing(id), []);
   function saved(detail: AssignmentDetail, replayed: boolean) {
@@ -52,10 +56,11 @@ export function AssignmentsScreen({ account, initialId = "", initialCode = "" }:
     cache.invalidate(`${scope}query:`); cache.invalidate(`${scope}stock:`); cache.invalidate(`${account.id}:books:query:`);
     cache.invalidate(`${account.id}:returns:open:`);
     const row = detail.assignment;
-    const overdue = row.expectedReturnDate < indiaToday();
+    const rowStatus = row.status ?? (row.openCount === 0 ? "CLOSED" : row.expectedReturnDate < indiaToday() ? "OVERDUE" : "OPEN");
+    const overdue = rowStatus === "OVERDUE";
     const term = search.trim().toLowerCase();
     const matches = [row.number, row.collectorName, row.collectorCode, row.phone].some((value) => value.toLowerCase().includes(term))
-      && (status === "ALL" || status === "OPEN" || (status === "OVERDUE" && overdue));
+      && (status === "ALL" || status === rowStatus);
     if (data && !replayed) cache.setQueryData(queryKey, { ...data, total: data.total + (matches ? 1 : 0),
       overdue: data.overdue + (matches && overdue ? 1 : 0), rows: matches && data.page === 1 ? [row, ...data.rows].slice(0, data.pageSize) : data.rows });
     const stockScope = `${account.id}:books:`;
@@ -84,6 +89,11 @@ export function AssignmentsScreen({ account, initialId = "", initialCode = "" }:
       <Button variant="outline" size="icon" aria-label={t("usersRefresh")} loading={query.loading} onClick={() => cache.invalidate(`${scope}query:`)}><RefreshCw size={17} /></Button></Card>
     <div className={"books-results flex items-center justify-between gap-[15px] text-[length:12px] min-h-[22px] my-[22px_14px]"}><span>{t("assignRecords")} {data?.total ?? 0}</span>{loading && <span className={"muted text-[color:var(--muted-foreground)]"} role="status">{t(data ? "usersUpdating" : "working")}</span>}</div>
     {query.error != null && <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8] error"} role="alert">{t(booksError(query.error))}</p>}
+    {!data && loading && <Card className="space-y-3 overflow-hidden p-5" role="status" aria-label={t("working")}>
+      {Array.from({ length: 5 }, (_, index) => <div key={index} className="grid grid-cols-7 gap-4 border-b border-border pb-3" aria-hidden="true">
+        {Array.from({ length: 7 }, (_, column) => <div key={column} className="h-5 animate-pulse rounded bg-muted motion-reduce:animate-none" />)}
+      </div>)}
+    </Card>}
     {data && data.rows.length > 0 && <Card className={"books-table-card overflow-hidden [&_.table-container]:mt-0 [&_.books-table_:is(th,_td)]:p-[15px_16px] [&_.books-table_:is(th,_td)]:text-start [&_.books-table_:is(th,_td)]:align-middle [&_.books-table_:is(th,_td)]:[overflow-wrap:anywhere] [&_.books-table_:is(th,_td):first-child]:ps-[20px] [&_.books-table_:is(th,_td):last-child]:pe-[20px] [&_.books-stock-table_:is(th,_td):nth-child(n+5)]:text-center"}><div className={"table-container overflow-x-auto mt-[18px] [scrollbar-width:thin] [scrollbar-color:var(--emerald-300)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--emerald-300)]"}><table className={"data-table w-full border-collapse text-start [&_th]:text-[length:10px] [&_th]:text-[color:var(--muted-foreground)] [&_th]:font-normal [&_th]:text-start [&_th]:p-[0_8px_12px] [&_td]:[border-top:1px_solid_var(--border)] [&_td]:p-[13px_8px] [&_td]:text-[length:11px] [&_th:first-child]:ps-0 [&_td:first-child]:ps-0 [&_th:last-child]:pe-0 [&_td:last-child]:pe-0 [&_th.amount-cell]:text-end books-table [&_thead_th]:bg-[var(--muted)] [&_thead_th]:font-semibold [&_thead_th]:text-[length:11px] [&_tbody_td]:text-[length:12px] [&_tbody_td]:leading-[1.6] assignment-table min-w-[950px] [table-layout:fixed] [&_:is(th,_td):nth-child(3)]:text-center [&_:is(th,_td):last-child]:text-center"}>
       <colgroup><col style={{ width: "20%" }} /><col style={{ width: "20%" }} /><col style={{ width: "8%" }} /><col style={{ width: "14%" }} /><col style={{ width: "15%" }} /><col style={{ width: "15%" }} /><col style={{ width: "8%" }} /></colgroup>
       <thead><tr><th scope="col">{t("assignNumber")}</th><th scope="col">{t("peopleCollectors")}</th><th scope="col">{t("assignBookCount")}</th>

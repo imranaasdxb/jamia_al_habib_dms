@@ -5,23 +5,38 @@ import { bookAssignments, bookCases, books, collectors, leftoverBooks, masterRec
 import { AuthFailure } from "@/modules/auth/auth.types";
 import { withBooksDatabase } from "@/modules/books/books.repository";
 import { bookRowSchema } from "@/modules/books/books.schema";
-import { assignmentRowSchema } from "@/modules/books/assignments.schema";
+import { assignmentRowSchema, indiaToday } from "@/modules/books/assignments.schema";
 import type { RequestDatabase } from "@/lib/db";
 import type { AssignmentQuery, AssignmentSubmission } from "@/modules/books/assignments.schema";
 
 const literalLike = (term: string) => `%${term.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
-const openCount = sql<number>`(select count(*)::integer from public.book_cases c where c.assignment_id = ${bookAssignments.id} and c.closed_at is null)`;
-function serialize(row: typeof bookAssignments.$inferSelect, count: number) {
-  return assignmentRowSchema.parse({ ...row, openCount: count, updatedAt: row.updatedAt.toISOString() });
+// Keep the outer table explicit when Drizzle renders this inside a SELECT list.
+const openCount = sql<number>`(select count(*)::integer from public.book_cases c
+  where c.assignment_id = "book_assignments"."id" and c.closed_at is null
+    and not exists (select 1 from public.book_returns r where r.case_id=c.id and r.deleted_at is null and r.finalized_at is not null))`;
+const assignmentStatus = sql<string>`case when ${openCount}=0 then 'CLOSED'
+  when "book_assignments"."expected_return_date" < (now() at time zone 'Asia/Kolkata')::date then 'OVERDUE' else 'OPEN' end`;
+const availableLeftoverCount = sql<number>`(select count(*)::integer from public.leftover_books l
+  join public.book_returns r on r.id=l.return_id
+  join public.books b on b.id=l.book_id
+  where r.assignment_id="book_assignments"."id" and r.deleted_at is null and r.finalized_at is not null
+    and l.deleted_at is null and l.status='AVAILABLE' and b.deleted_at is null and b.status='PARTLY_USED' and r.outcome='PARTLY_USED'
+    and l.receipt_from=coalesce(r.last_used+1,r.receipt_from) and l.receipt_to=r.receipt_to
+    and not exists (select 1 from public.book_cases c where c.book_id=b.id and c.closed_at is null)
+    and not exists (select 1 from public.book_flags f where f.book_id=b.id and f.deleted_at is null and f.status<>'RESOLVED')
+    and not exists (select 1 from public.book_returns later where later.book_id=b.id and later.deleted_at is null and later.created_at>r.created_at))`;
+function serialize(row: typeof bookAssignments.$inferSelect, count: number, leftovers = 0) {
+  return assignmentRowSchema.parse({ ...row, openCount: count, availableLeftoverCount: leftovers,
+    status: count === 0 ? "CLOSED" : row.expectedReturnDate < indiaToday() ? "OVERDUE" : "OPEN", updatedAt: row.updatedAt.toISOString() });
 }
 async function detail(tx: RequestDatabase, id: string) {
-  const [record] = await tx.select({ assignment: bookAssignments, openCount }).from(bookAssignments)
+  const [record] = await tx.select({ assignment: bookAssignments, openCount, availableLeftoverCount }).from(bookAssignments)
     .where(and(eq(bookAssignments.id, id), isNull(bookAssignments.deletedAt))).limit(1);
   if (!record) throw new AuthFailure("ASSIGNMENT_NOT_FOUND", 404);
   const rows = await tx.select({ book: books, closedAt: bookCases.closedAt, assignedFrom: bookCases.receiptFrom, assignedTo: bookCases.receiptTo,
     source: bookCases.source, sourceCode: bookCases.sourceCode }).from(bookCases)
     .innerJoin(books, eq(books.id, bookCases.bookId)).where(eq(bookCases.assignmentId, id)).orderBy(asc(books.bookType), asc(books.editionNumber), asc(books.editionBookNumber), asc(books.receiptFrom), asc(books.id));
-  return { assignment: serialize(record.assignment, record.openCount), books: rows.map(({ book, closedAt, ...range }) => ({ ...range,
+  return { assignment: serialize(record.assignment, record.openCount, record.availableLeftoverCount), books: rows.map(({ book, closedAt, ...range }) => ({ ...range,
     ...bookRowSchema.parse({ ...book, updatedAt: book.updatedAt.toISOString() }), closedAt: closedAt?.toISOString() ?? null,
   })) };
 }
@@ -36,15 +51,14 @@ export async function listAssignments(query: AssignmentQuery) {
   return withBooksDatabase(async (tx) => {
     const term = literalLike(query.search);
     const where = and(isNull(bookAssignments.deletedAt), query.collectorId ? eq(bookAssignments.collectorId, query.collectorId) : undefined,
-      query.status === "CLOSED" ? sql`${openCount} = 0` : query.status === "OPEN" || query.status === "OVERDUE" ? sql`${openCount} > 0` : undefined,
-      query.status === "OVERDUE" ? sql`${bookAssignments.expectedReturnDate} < (now() at time zone 'Asia/Kolkata')::date` : undefined,
+      query.status !== "ALL" ? sql`(${assignmentStatus}) = ${query.status}` : undefined,
       query.search ? or(ilike(bookAssignments.number, term), ilike(bookAssignments.collectorName, term), ilike(bookAssignments.collectorCode, term), ilike(bookAssignments.phone, term)) : undefined);
     const [result] = await tx.select({ total: count(), overdue: sql<number>`count(*) filter (where ${openCount} > 0 and ${bookAssignments.expectedReturnDate} < (now() at time zone 'Asia/Kolkata')::date)::integer` }).from(bookAssignments).where(where);
     const total = result?.total ?? 0; const pageSize = 20;
     const page = Math.min(query.page, Math.max(1, Math.ceil(total / pageSize)));
-    const rows = await tx.select({ assignment: bookAssignments, openCount }).from(bookAssignments).where(where)
+    const rows = await tx.select({ assignment: bookAssignments, openCount, availableLeftoverCount }).from(bookAssignments).where(where)
       .orderBy(desc(bookAssignments.createdAt), asc(bookAssignments.id)).limit(pageSize).offset((page - 1) * pageSize);
-    return { rows: rows.map((row) => serialize(row.assignment, row.openCount)), total, page, pageSize, overdue: result?.overdue ?? 0 };
+    return { rows: rows.map((row) => serialize(row.assignment, row.openCount, row.availableLeftoverCount)), total, page, pageSize, overdue: result?.overdue ?? 0 };
   });
 }
 export async function availableBooks(search: string, assignmentDate: string, page: number, bookType?: "REGULAR" | "TOKEN", editionId?: string) {

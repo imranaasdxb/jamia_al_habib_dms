@@ -54,11 +54,9 @@ export function AuthScreen({ screen, email, notice, managed = false }: {
           <p className={"auth-description mt-[10px] leading-[1.7] text-[color:var(--muted-foreground)]"}>{t(managed ? "activateDescription" : content.description)}</p>
           {notice && <p className={"auth-notice mt-[22px] text-[color:var(--warning)] bg-[var(--warning-soft)] rounded-[var(--radius-control)] p-[10px_13px] text-[length:11px] leading-[1.7]"} role="status">{t(notice)}</p>}
           <AuthForm screen={screen} email={email} />
-          <div className={"auth-bottom mt-[25px] text-center text-[color:var(--muted-foreground)] leading-[1.9] text-[length:12px] [&_a]:text-[color:var(--primary)] [&_a]:font-semibold"}>
-            {screen === "login" ? <>{t("firstAccountPrompt")} <Link href="/signup">{t("signup")}</Link></>
-              : screen === "signup" ? <>{t("alreadyRegistered")} <Link href="/login">{t("login")}</Link></>
-                : <Link href="/login">{t("returnLogin")}</Link>}
-          </div>
+          {screen !== "login" && <div className={"auth-bottom mt-[25px] text-center text-[color:var(--muted-foreground)] leading-[1.9] text-[length:12px] [&_a]:text-[color:var(--primary)] [&_a]:font-semibold"}>
+            <Link href="/login">{t("returnLogin")}</Link>
+          </div>}
           {screen === "signup" && !managed && <p className={"auth-footer-note mt-[24px] text-[color:var(--muted-foreground)] text-[length:11px] leading-[1.8]"}>
             {t("manualPromotion")} {t("laterUsers")}
           </p>}

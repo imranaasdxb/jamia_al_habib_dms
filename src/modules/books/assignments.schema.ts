@@ -22,7 +22,8 @@ export const assignmentRowSchema = z.object({ id: z.uuid(), number: z.string(), 
   source: z.enum(["NEW", "LEFTOVER"]),
   collectorId: z.uuid(), collectorName: z.string(), collectorCode: z.string(), phone: z.string(), whatsapp: z.string(), address: z.string(),
   areas: z.array(z.object({ id: z.uuid(), nameEn: z.string(), nameUr: z.string() })), bookIds: z.array(z.uuid()),
-  assignedByName: z.string(), remarks: z.string(), openCount: z.number().int(), updatedAt: z.iso.datetime() });
+  assignedByName: z.string(), remarks: z.string(), openCount: z.number().int(), updatedAt: z.iso.datetime(),
+  status: z.enum(["OPEN", "OVERDUE", "CLOSED"]).optional(), availableLeftoverCount: z.number().int().nonnegative().default(0) });
 export const assignmentsResponseSchema = z.object({ data: z.array(assignmentRowSchema), meta: z.object({ total: z.number(), page: z.number(), pageSize: z.number(), overdue: z.number() }) });
 export const assignmentDetailSchema = z.object({ assignment: assignmentRowSchema, books: z.array(bookRowSchema.extend({ closedAt: z.iso.datetime().nullable(),
   assignedFrom: z.number().int(), assignedTo: z.number().int(), source: z.enum(["NEW", "LEFTOVER"]), sourceCode: z.string() })) });
