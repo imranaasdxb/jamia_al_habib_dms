@@ -20,6 +20,8 @@ export async function readDashboard(query: DashboardQuery, onTiming?: (name: str
           select 1 from public.user_permissions where person_id = ${actor.id}::uuid
             and permission = 'dashboard.read' and not allowed and deleted_at is null
         ) as allowed
+      ), historical as materialized (
+        select * from public.recorded_historical_collections()
       ), live_books as materialized (
         select id, status, book_type from public.books where deleted_at is null
       ), live_returns as materialized (
@@ -49,11 +51,15 @@ export async function readDashboard(query: DashboardQuery, onTiming?: (name: str
             when 'thisMonth' then date_trunc('month', today)::date
             when 'lastMonth' then (date_trunc('month', today) - interval '1 month')::date
             when 'thisYear' then date_trunc('year', today)::date
-            else coalesce((select min(donation_date) from valid_receipts where donation_date <= today), date_trunc('month', today)::date) end as starts,
+            else coalesce((select min(day) from (select donation_date as day from valid_receipts
+              union all select collection_date from historical) dates where day <= today), date_trunc('month', today)::date) end as starts,
           case when ${query.period} = 'lastMonth' then (date_trunc('month', today) - interval '1 day')::date else today end as ends
         from clock
       ), scoped as materialized (
         select r.* from valid_receipts r cross join bounds where r.donation_date between bounds.starts and bounds.ends
+      ), scoped_history as materialized (
+        select h.* from historical h cross join bounds where h.collection_date between bounds.starts and bounds.ends
+          or (${query.period === "allTime"} and h.collection_date is null)
       ), return_amounts as (
         select r.id, r.commission_given, sum(receipt.amount_paise) as all_collected,
           coalesce(max(r.historical_commission), round(sum(receipt.amount_paise)::numeric * r.commission_basis_points / 1000000) * 100) as commission
@@ -66,17 +72,19 @@ export async function readDashboard(query: DashboardQuery, onTiming?: (name: str
           s.collected < r.all_collected as allocated
         from return_amounts r join scoped_returns s on s.return_id = r.id
       ), financial as (
-        select coalesce(sum(amount_paise), 0) as collected, count(*)::integer as receipts,
+        select coalesce(sum(amount_paise), 0)+(select coalesce(sum(amount_paise),0) from scoped_history) as collected,
+          count(*)::integer+(select count(*)::integer from scoped_history where amount_paise>0) as receipts,
           count(distinct case when name <> '' then case when phone ~ '^[6-9][0-9]{9}$'
             then jsonb_build_array(lower(name), phone)::text else id::text end end)::integer as donors,
-          coalesce(sum(amount_paise) filter (where payment = 'CASH'), 0) as cash,
+          coalesce(sum(amount_paise) filter (where payment = 'CASH'), 0)+(select coalesce(sum(amount_paise),0) from scoped_history) as cash,
           coalesce(sum(amount_paise) filter (where payment = 'DIGITAL'), 0) as digital,
           coalesce(sum(amount_paise) filter (where payment = 'CHEQUE'), 0) as cheque,
-          coalesce(sum(amount_paise) filter (where book_type = 'REGULAR'), 0) as regular,
-          coalesce(sum(amount_paise) filter (where book_type = 'TOKEN'), 0) as token
+          coalesce(sum(amount_paise) filter (where book_type = 'REGULAR'), 0)+(select coalesce(sum(amount_paise),0) from scoped_history where book_type='REGULAR') as regular,
+          coalesce(sum(amount_paise) filter (where book_type = 'TOKEN'), 0)+(select coalesce(sum(amount_paise),0) from scoped_history where book_type='TOKEN') as token
         from scoped
       ), commission_totals as (
-        select coalesce(sum(amount), 0) as total, coalesce(sum(amount) filter (where commission_given), 0) as paid,
+        select coalesce(sum(amount), 0)+(select coalesce(sum(commission_paise),0) from scoped_history) as total,
+          coalesce(sum(amount) filter (where commission_given), 0)+(select coalesce(sum(commission_paise),0) from scoped_history) as paid,
           coalesce(bool_or(allocated), false) as allocated from commissions
       ), inventory as (
         select count(*)::integer as total, count(*) filter (where status = 'IN_STOCK')::integer as stock,
@@ -112,9 +120,12 @@ export async function readDashboard(query: DashboardQuery, onTiming?: (name: str
         select bucket from trend_end cross join lateral generate_series(
           greatest(date_trunc(${unit}, starts::timestamp), date_trunc(${unit}, ends::timestamp) - ${lookback}::interval),
           date_trunc(${unit}, ends::timestamp), ${step}::interval) as series(bucket)
+      ), collection_events as (
+        select donation_date,amount_paise from scoped
+        union all select collection_date,coalesce(amount_paise,0) from scoped_history where collection_date is not null
       ), trend as (
         select bucket::date as day, coalesce(sum(s.amount_paise), 0) as amount
-        from buckets left join scoped s on date_trunc(${unit}, s.donation_date::timestamp) = bucket group by bucket
+        from buckets left join collection_events s on date_trunc(${unit}, s.donation_date::timestamp) = bucket group by bucket
       ), recent as (
         select * from scoped order by donation_date desc, updated_at desc, id desc limit 8
       )

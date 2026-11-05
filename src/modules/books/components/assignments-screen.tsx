@@ -15,6 +15,7 @@ import { assignmentsResponseSchema, indiaToday } from "@/modules/books/assignmen
 import { AssignmentForm } from "@/modules/books/components/assignment-form";
 import { AssignmentSlipView } from "@/modules/books/components/assignment-slip";
 import { BookExportButton } from "@/modules/books/components/book-export-button";
+import { HistoricalCollections } from "@/modules/books/components/historical-collections";
 import type { Account } from "@/modules/auth/auth.types";
 import type { AssignmentDetail, AssignmentQuery, AssignmentRow, AssignmentsPage } from "@/modules/books/assignments.schema";
 import type { BooksPage } from "@/modules/books/books.schema";
@@ -92,6 +93,7 @@ export function AssignmentsScreen({ account, initialId = "", initialCode = "" }:
       <Button variant="outline" size="icon" aria-label={t("usersRefresh")} loading={query.loading} onClick={() => cache.invalidate(`${scope}query:`)}><RefreshCw size={17} /></Button></Card>
     <div className={"books-results flex items-center justify-between gap-[15px] text-[length:12px] min-h-[22px] my-[22px_14px]"}><span>{t("assignRecords")} {data?.total ?? 0}</span>{loading && <span className={"muted text-[color:var(--muted-foreground)]"} role="status">{t(data ? "usersUpdating" : "working")}</span>}</div>
     {query.error != null && <p className={"form-message p-[12px_14px] rounded-[var(--radius-control)] bg-[var(--muted)] text-[color:var(--muted-foreground)] text-[length:12px] leading-[1.8] error"} role="alert">{t(booksError(query.error))}</p>}
+    <HistoricalCollections accountId={account.id} search={search} />
     {!data && loading && <Card className="space-y-3 overflow-hidden p-5" role="status" aria-label={t("working")}>
       {Array.from({ length: 5 }, (_, index) => <div key={index} className="grid grid-cols-7 gap-4 border-b border-border pb-3" aria-hidden="true">
         {Array.from({ length: 7 }, (_, column) => <div key={column} className="h-5 animate-pulse rounded bg-muted motion-reduce:animate-none" />)}

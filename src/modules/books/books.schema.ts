@@ -47,6 +47,7 @@ export const bookStockSummarySchema = z.object({
   editionNameEn: z.string().nullable(), editionNameUr: z.string().nullable(),
   books: z.number().int().nonnegative(), available: z.number().int().nonnegative(),
   assigned: z.number().int().nonnegative(), closed: z.number().int().nonnegative(),
+  partlyUsed: z.number().int().nonnegative(), lost: z.number().int().nonnegative(), flagged: z.number().int().nonnegative(),
   receipts: z.number().int().nonnegative(),
   bookFrom: z.number().int().nullable(), bookTo: z.number().int().nullable(),
   receiptFrom: z.number().int().nullable(), receiptTo: z.number().int().nullable(),

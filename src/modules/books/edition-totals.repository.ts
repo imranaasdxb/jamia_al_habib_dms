@@ -20,6 +20,11 @@ export async function getEditionCollectionTotals() {
           and receipt.deleted_at is null and receipt.status='VALID'
         where b.deleted_at is null
         group by r.id,b.book_type,r.commission_basis_points
+      ), financial_rows as (
+        select * from submissions
+        union all
+        select book_type,coalesce(amount_paise,0),coalesce(commission_paise,0)
+        from public.recorded_historical_collections()
       )
       select jsonb_build_object(
         'total',jsonb_build_object('collectedPaise',coalesce(sum(collected),0),'commissionPaise',coalesce(sum(commission),0)),
@@ -27,7 +32,7 @@ export async function getEditionCollectionTotals() {
           'commissionPaise',coalesce(sum(commission) filter (where book_type='REGULAR'),0)),
         'token',jsonb_build_object('collectedPaise',coalesce(sum(collected) filter (where book_type='TOKEN'),0),
           'commissionPaise',coalesce(sum(commission) filter (where book_type='TOKEN'),0))
-      ) as data from submissions`);
+      ) as data from financial_rows`);
     return editionCollectionTotalsSchema.parse(result?.data);
   });
 }

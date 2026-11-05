@@ -46,11 +46,17 @@ export async function getEditionSummary(id: string, query: EditionSummaryQuery) 
         from scope_books b join public.book_returns r on r.book_id=b.id and r.deleted_at is null
         join public.book_receipts receipt on receipt.return_id=r.id and receipt.book_id=b.id and receipt.deleted_at is null
         group by r.id,r.book_id,r.commission_basis_points
+      ), financial_rows as (
+        select * from submission_totals
+        union all
+        select h.book_id,null::uuid,0,0,0,0,coalesce(h.amount_paise,0),0,coalesce(h.amount_paise,0),0,0,coalesce(h.commission_paise,0)
+        from public.recorded_historical_collections() h
+        where h.edition_id=${id}::uuid and ${overview ? sql`true` : sql`h.book_id in (select id from page_books)`}
       ), book_totals as (
         select book_id,sum(entered) as entered,sum(checked) as checked,sum(cancelled) as cancelled,sum(damaged) as damaged,
           sum(collected) as collected,sum(finalized) as finalized,sum(cash) as cash,sum(digital) as digital,
           sum(cheque) as cheque,sum(commission) as commission
-        from submission_totals group by book_id
+        from financial_rows group by book_id
       ), book_page as (
         select jsonb_build_object('rows',coalesce((
           select jsonb_agg(jsonb_build_object(

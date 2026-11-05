@@ -28,9 +28,9 @@ export async function readReports(q:ReportQuery){
   else if(q.stage==="FINALIZED")conditions.push(sql`finalized_at is not null`);
   else if(q.stage!=="ALL")conditions.push(sql`receipt_entry_status=${q.stage}`);
   const dimensions={
-   EDITIONS:sql`edition_id::text as group_id,edition_name as name,concat(book_type,case when token_value_paise is not null then ' · ₹'||(token_value_paise/100)::text else '' end) as detail`,
-   BOOKS:sql`book_id::text as group_id,book_number as name,edition_name||' · '||book_type as detail`,
-   FUNDRAISERS:sql`collector_id::text as group_id,collector_name as name,collector_code as detail`,
+   EDITIONS:sql`coalesce(edition_id::text,'NOT_RECORDED') as group_id,edition_name as name,concat(book_type,case when token_value_paise is not null then ' · ₹'||(token_value_paise/100)::text else '' end) as detail`,
+   BOOKS:sql`coalesce(book_id::text,'HISTORY-'||id::text) as group_id,book_number as name,edition_name||' · '||book_type as detail`,
+   FUNDRAISERS:sql`coalesce(collector_id::text,'NOT_RECORDED') as group_id,collector_name as name,collector_code as detail`,
    HEADS:sql`coalesce(head_id,'UNSPECIFIED') as group_id,coalesce(head_name,'Unspecified / multiple heads') as name,coalesce(category_name,'Historical or unallocated donation') as detail`,
    AREAS:sql`lower(area_name) as group_id,area_name as name,''::text as detail`,
    PAYMENTS:sql`payment as group_id,payment as name,''::text as detail`,
@@ -65,8 +65,19 @@ export async function readReports(q:ReportQuery){
     select a.*,base_commission+case when row_number() over(partition by return_id order by remainder desc,id)
       <=book_commission-sum(base_commission) over(partition by return_id) then 1 else 0 end as allocated_commission
     from apportioned a
+   ), collection_rows as (
+    select id,amount_paise,checked,data,donation_date,payment,head_id,return_id,book_id,finalized_at,
+     receipt_entry_status,edition_id,edition_name,book_number,book_type,token_value_paise,
+     collector_id,collector_name,collector_code,areas,allocated_commission from allocations
+    union all
+    select md5(h.source_key)::uuid,coalesce(h.amount_paise,0),false,
+     jsonb_build_object('district',h.collection_area,'remarks','RECORDED HISTORICAL COLLECTION'),
+     h.collection_date,'CASH',null::text,null::uuid,h.book_id,null::timestamptz,'DRAFT',h.edition_id,
+     h.edition_name,h.book_number,h.book_type,h.token_value_paise,h.person_id,h.fundraiser_name,h.fundraiser_code,
+     '[]'::jsonb,coalesce(h.commission_paise,0) from public.recorded_historical_collections() h
+     where coalesce(h.amount_paise,0)>0 or coalesce(h.commission_paise,0)>0
    ), scoped as materialized (
-    select * from allocations where ${sql.join(conditions,sql` and `)}
+    select * from collection_rows where ${sql.join(conditions,sql` and `)}
    ), enriched as (
     select s.*,head.name_en as head_name,category.name_en as category_name,
      case when ${q.view === "AREAS"} then coalesce(nullif(btrim(s.data->>'district'),''),nullif(btrim(s.data->>'village'),''),

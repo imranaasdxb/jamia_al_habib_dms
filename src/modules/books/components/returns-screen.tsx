@@ -17,6 +17,7 @@ import { bookLossResponseSchema, displayMoney, openReturnsResponseSchema, return
 import { ReturnForm } from "@/modules/books/components/return-form";
 import { AuthorizationCertificateView } from "@/modules/books/components/authorization-certificate";
 import { BookExportButton } from "@/modules/books/components/book-export-button";
+import { HistoricalCollections } from "@/modules/books/components/historical-collections";
 import { receiptError, receiptRequest } from "@/modules/receipts/receipts.client";
 import { receiptBookResponseSchema } from "@/modules/receipts/receipts.schema";
 import type { Account } from "@/modules/auth/auth.types";
@@ -252,6 +253,7 @@ export function ReturnsScreen({ account }: { account: Account }) {
     {query.error != null && <p className="mb-4 text-sm text-[var(--danger)]" role="alert">{t(booksError(query.error))}</p>}
     {lossNotice && <p className="mb-4 rounded-xl bg-accent px-4 py-3 text-sm text-primary" role="status">{t("bookLostSuccess")}</p>}
     {(data || query.error == null) && <SubmissionSummary summary={data?.meta.summary} tab={tab} status={status} onStatusChange={changeStatus} />}
+    <HistoricalCollections accountId={account.id} search={search} collectorId={collectorId} bookType={bookType} editionId={editionId} />
     {loading && data && <p className="mb-3 text-xs text-muted-foreground" role="status">{t("usersUpdating")}</p>}
     {!data && loading && <SubmissionListSkeleton />}
     {tab === "OPEN" && !collectorId && data && <p className="mb-3 text-xs text-muted-foreground">{t("submissionPreviewHelp")}</p>}

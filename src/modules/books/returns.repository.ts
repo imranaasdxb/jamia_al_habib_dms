@@ -165,9 +165,14 @@ export async function listOpenReturns(query: ReturnQuery) {
     const previewLimit = 3;
     type FundraiserCount = { collectorId: string; assignedBookCount: number; matchingBookCount: number };
     const [result] = await tx.execute<{ data: { total: number; page: number; ids: string[];
-      counts: FundraiserCount[]; summary: ReturnListSummary; editions: unknown } }>(sql`
-      with assigned_cases as materialized (
+      counts: FundraiserCount[]; summary: ReturnListSummary; editions: unknown;
+      historicalTotals: { collectorId: string; collectedPaise: number; commissionPaise: number }[];
+      historicalBookTotals: { caseId: string; collectedPaise: number; commissionPaise: number }[] } }>(sql`
+      with historical_source as materialized (
+        select person_id,book_id,amount_paise,commission_paise from public.recorded_historical_collections()
+      ), assigned_cases as materialized (
         select ${bookCases.id} as id,${bookAssignments.collectorId} as collector_id,
+          ${books.id} as book_id,
           ${bookAssignments.expectedReturnDate} as expected_date,${books.editionNumber} as edition_number,
           ${books.editionBookNumber} as book_number,${bookCases.receiptFrom} as receipt_from,
           (${bookReturns.id} is not null) as started, (${bookReturns.finalizedAt} is not null) as closed,
@@ -210,6 +215,20 @@ export async function listOpenReturns(query: ReturnQuery) {
           'notStarted',count(*) filter (where not started),'inProgress',count(*) filter (where started and not closed and not reopened),
           'closed',count(*) filter (where closed),'reopened',count(*) filter (where reopened),
           'overdue',count(*) filter (where not closed and expected_date<${today}::date)) from assigned_cases where in_scope),
+        'historicalTotals',coalesce((select jsonb_agg(jsonb_build_object('collectorId',h.person_id,
+          'collectedPaise',h.collected,'commissionPaise',h.commission)) from (
+            select person_id,coalesce(sum(amount_paise),0) as collected,coalesce(sum(commission_paise),0) as commission
+            from historical_source where person_id in (select collector_id from page_profiles)
+            group by person_id) h),'[]'::jsonb),
+        'historicalBookTotals',coalesce((select jsonb_agg(jsonb_build_object('caseId',h.case_id,
+          'collectedPaise',h.collected,'commissionPaise',h.commission)) from (
+            select c.case_id,coalesce(sum(h.amount_paise),0) as collected,coalesce(sum(h.commission_paise),0) as commission
+            from historical_source h join (
+              select book_id,collector_id,(array_agg(id))[1] as case_id from assigned_cases
+              group by book_id,collector_id having count(*)=1
+            ) c on c.book_id=h.book_id and c.collector_id=h.person_id
+            where h.person_id in (select collector_id from page_profiles) group by c.case_id
+          ) h),'[]'::jsonb),
         'editions',${query.options === "1" ? submissionEditionOptions("OPEN") : sql`null`}
       ) as data from paging`);
     if (!result?.data) throw new AuthFailure("RETURNS_UNAVAILABLE", 503);
@@ -239,11 +258,20 @@ export async function listOpenReturns(query: ReturnQuery) {
       enteredReceiptCount: summary.enteredReceiptCount, collectedPaise: summary.collectedPaise,
       collectedCommissionPaise: summary.collectedCommissionPaise,
     }]));
+    for (const historical of result.data.historicalBookTotals) {
+      const totals = byCase.get(historical.caseId) ?? { enteredReceiptCount: 0, collectedPaise: 0, collectedCommissionPaise: 0 };
+      totals.collectedPaise += historical.collectedPaise; totals.collectedCommissionPaise += historical.commissionPaise;
+      byCase.set(historical.caseId, totals);
+    }
     const fundraiserTotals = new Map(counts.map((item) => [item.collectorId,
       { ...item, collectedPaise: 0, collectedCommissionPaise: 0 }]));
     for (const summary of summaries) {
       const totals = fundraiserTotals.get(summary.collectorId);
       if (totals) { totals.collectedPaise += summary.collectedPaise; totals.collectedCommissionPaise += summary.collectedCommissionPaise; }
+    }
+    for (const historical of result.data.historicalTotals) {
+      const totals = fundraiserTotals.get(historical.collectorId);
+      if (totals) { totals.collectedPaise += historical.collectedPaise; totals.collectedCommissionPaise += historical.commissionPaise; }
     }
     return { rows: rows.map((row) => ({ ...serializeCase(row), ...byCase.get(row.id) })),
       fundraiserTotals: [...fundraiserTotals.values()], total, page, pageSize,

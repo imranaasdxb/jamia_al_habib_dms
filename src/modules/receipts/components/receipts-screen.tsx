@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { ReceiptRequestError, receiptError, receiptRequest } from "@/modules/receipts/receipts.client";
 import { receiptBookResponseSchema, receiptWorkflowSchema, receiptQueueSchema } from "@/modules/receipts/receipts.schema";
 import { displayMoney } from "@/modules/books/returns.schema";
+import { HistoricalCollections } from "@/modules/books/components/historical-collections";
 import { ReceiptForm } from "@/modules/receipts/components/receipt-form";
 import type { Account } from "@/modules/auth/auth.types";
 import type { ReceiptBook, ReceiptHeader, ReceiptQuery, ReceiptQueue } from "@/modules/receipts/receipts.schema";
@@ -41,6 +42,7 @@ export function ReceiptQueueScreen({ account }: { account: Account }) {
       <Button variant="outline" size="icon" aria-label={t("usersRefresh")} loading={query.loading} onClick={() => cache.invalidate(`${scope}query:`)}><RefreshCw size={17} /></Button></Card>
     <div className="my-5 flex justify-between text-xs"><span>{t("receiptQueueCount")}: {data?.total ?? 0}</span>{loading && <span role="status" className="text-muted-foreground">{t(data ? "usersUpdating" : "working")}</span>}</div>
     {query.error != null && <p className="my-4 text-sm text-[var(--danger)]" role="alert">{t(receiptError(query.error))}</p>}
+    <HistoricalCollections accountId={account.id} search={search} />
     {data && data.rows.length > 0 && <Card className="overflow-hidden"><div className="overflow-x-auto [scrollbar-width:thin]"><table className={`${tableClass} min-w-[850px]`}><thead><tr>
       <th>{t("booksNumber")}</th><th>{t("peopleCollectors")}</th><th>{t("returnsDate")}</th><th>{t("booksReceiptRange")}</th><th>{t("status")}</th><th>{t("receiptOpenBook")}</th></tr></thead><tbody>
       {data.rows.map((row) => <tr key={row.returned.id}><td><strong>{row.returned.bookNumber}</strong><span className="mt-1 block text-muted-foreground">{row.returned.sourceCode} · {row.returned.number}</span></td>

@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { memo, useCallback, useState, useSyncExternalStore } from "react";
-import { BookCheck, BookOpen, Eye, HandCoins, LibraryBig, ReceiptText, RefreshCw, Search } from "lucide-react";
+import { BookCheck, BookOpen, BookX, Eye, Flag, HandCoins, LibraryBig, ReceiptText, RefreshCw, RotateCcw, Search } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { AppShell } from "@/components/layout/app-shell";
 import { usePageDataCache, usePageQuery, usePageState } from "@/components/page-data-provider";
@@ -45,7 +45,7 @@ function StockSummaryCards({ summary, bookType }: { summary: BookStockSummary | 
   const { t, language } = useLanguage();
   if (!summary) return <section className="mt-5" role="status" aria-label={t("booksStockSummary")}>
     <div className="mb-3 h-4 w-48 animate-pulse rounded bg-muted motion-reduce:animate-none" />
-    <div className="grid grid-cols-5 gap-3 max-[1200px]:grid-cols-3">{Array.from({ length: 5 }, (_, i) =>
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">{Array.from({ length: 8 }, (_, i) =>
       <Card key={i} className="min-h-28 p-4" aria-hidden="true">
         <div className="h-3 w-24 animate-pulse rounded bg-muted motion-reduce:animate-none" />
         <div className="mt-3 h-7 w-20 animate-pulse rounded bg-muted motion-reduce:animate-none" />
@@ -61,6 +61,9 @@ function StockSummaryCards({ summary, bookType }: { summary: BookStockSummary | 
     { label: "booksInStock", value: summary.available, icon: LibraryBig, detail: share(summary.available), tone: "border-border bg-white text-foreground", iconTone: "bg-sky-50 text-sky-700" },
     { label: "booksAssigned", value: summary.assigned, icon: HandCoins, detail: share(summary.assigned), tone: "border-border bg-white text-foreground", iconTone: "bg-amber-50 text-amber-700" },
     { label: "booksClosed", value: summary.closed, icon: BookCheck, detail: share(summary.closed), tone: "border-border bg-white text-foreground", iconTone: "bg-violet-50 text-violet-700" },
+    { label: "booksPartlyUsed", value: summary.partlyUsed, icon: RotateCcw, detail: share(summary.partlyUsed), tone: "border-border bg-white text-foreground", iconTone: "bg-teal-50 text-teal-700" },
+    { label: "booksLost", value: summary.lost, icon: BookX, detail: share(summary.lost), tone: "border-border bg-white text-foreground", iconTone: "bg-rose-50 text-rose-700" },
+    { label: "booksFlagged", value: summary.flagged, icon: Flag, detail: share(summary.flagged), tone: "border-border bg-white text-foreground", iconTone: "bg-orange-50 text-orange-700" },
     { label: "booksTotalReceipts", value: summary.receipts, icon: ReceiptText,
       detail: range(summary.receiptFrom, summary.receiptTo), tone: "border-border bg-white text-foreground", iconTone: "bg-rose-50 text-rose-700" },
   ] as const;
@@ -70,7 +73,7 @@ function StockSummaryCards({ summary, bookType }: { summary: BookStockSummary | 
         <p className="mt-1 text-[11px] text-muted-foreground">{t("booksStockSummaryHelp")}</p></div>
       <Badge tone="success">{t(bookType === "TOKEN" ? "booksToken" : "booksRegular")}</Badge>
     </div>
-    <div className="grid grid-cols-5 gap-3 max-[1200px]:grid-cols-3">{cards.map(({ label, value, icon: Icon, detail, tone, iconTone }) =>
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">{cards.map(({ label, value, icon: Icon, detail, tone, iconTone }) =>
       <div key={label} className={`min-w-0 rounded-2xl border p-4 ${tone}`}>
         <div className="flex items-start justify-between gap-2"><span className="text-[11px] font-medium leading-relaxed">{t(label)}</span>
           <span className={`inline-flex size-8 shrink-0 items-center justify-center rounded-xl ${iconTone}`}><Icon size={16} aria-hidden="true" /></span></div>
@@ -92,8 +95,8 @@ export function BooksScreen({ account }: { account: Account }) {
   const [page, setPage] = usePageState(`${scope}filters:page`, 1);
   const [viewing, setViewing] = useState<BookRow | null>(null);
   const params = new URLSearchParams({ search: search.trim(), editionId, bookType, tokenValue, status, page: String(page) }).toString();
-  const key = `${scope}query:stock-v3:${params}`;
-  const summaryKey = `${scope}query:stock-summary:${bookType}:${editionId}:${tokenValue}`;
+  const key = `${scope}query:stock-v4:${params}`;
+  const summaryKey = `${scope}query:stock-summary-v2:${bookType}:${editionId}:${tokenValue}`;
   const subscribeSummary = useCallback((notify: () => void) => {
     const entry = cache.entry(summaryKey);
     entry.listeners.add(notify);
